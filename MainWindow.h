@@ -10,5 +10,8 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+private:
+    void createActions();
+    void createToolBars();
 };
 #endif // MAINWINDOW_H
