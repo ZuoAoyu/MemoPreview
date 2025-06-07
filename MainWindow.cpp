@@ -18,7 +18,8 @@ MainWindow::~MainWindow() {}
 
 void MainWindow::createActions()
 {
-
+    refreshAction = new QAction{"刷新", this};
+    refreshAction->setShortcut(tr("F5"));
 }
 
 void MainWindow::createToolBars()
@@ -42,5 +43,10 @@ void MainWindow::createToolBars()
     settingToolBar->addWidget(superWindowSelector);
     settingToolBar->addWidget(latexTemplateSelector);
 
+
+    QToolBar *operateToolBar = new QToolBar;
+    operateToolBar->addAction(refreshAction);
+
     addToolBar(settingToolBar);
+    addToolBar(operateToolBar);
 }

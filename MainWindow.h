@@ -13,5 +13,7 @@ public:
 private:
     void createActions();
     void createToolBars();
+
+    QAction* refreshAction = nullptr;
 };
 #endif // MAINWINDOW_H
