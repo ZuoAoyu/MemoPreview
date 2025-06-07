@@ -15,5 +15,8 @@ private:
     void createToolBars();
 
     QAction* refreshAction = nullptr;
+    QAction* showLogAction = nullptr;
+    QAction* showConfigAction = nullptr;
+    QAction* openWorkspaceAction = nullptr;
 };
 #endif // MAINWINDOW_H

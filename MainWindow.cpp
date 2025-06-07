@@ -20,6 +20,10 @@ void MainWindow::createActions()
 {
     refreshAction = new QAction{"刷新", this};
     refreshAction->setShortcut(tr("F5"));
+
+    showLogAction = new QAction{"日志", this};
+    showConfigAction = new QAction{"设置", this};
+    openWorkspaceAction = new QAction{"工作区", this};
 }
 
 void MainWindow::createToolBars()
@@ -46,6 +50,9 @@ void MainWindow::createToolBars()
 
     QToolBar *operateToolBar = new QToolBar;
     operateToolBar->addAction(refreshAction);
+    operateToolBar->addAction(showLogAction);
+    operateToolBar->addAction(showConfigAction);
+    operateToolBar->addAction(openWorkspaceAction);
 
     addToolBar(settingToolBar);
     addToolBar(operateToolBar);
