@@ -11,6 +11,8 @@ class SettingsDialog : public QDialog
 public:
     explicit SettingsDialog(QWidget* parent = nullptr);
     ~SettingsDialog();
+private:
+    void setupUi();
 };
 
 #endif // SETTINGSDIALOG_H
