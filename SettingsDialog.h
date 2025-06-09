@@ -11,8 +11,17 @@ class SettingsDialog : public QDialog
 public:
     explicit SettingsDialog(QWidget* parent = nullptr);
     ~SettingsDialog();
+private slots:
+    void addTemplate();
+    void editTemplate();
+    void deleteTemplate();
 private:
     void setupUi();
+private:
+    // 存储模板内容，key为模板标题
+    QMap<QString, QString> templateContentMap;
+
+    QListWidget* templateList;
 };
 
 #endif // SETTINGSDIALOG_H

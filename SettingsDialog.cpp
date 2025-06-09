@@ -1,4 +1,5 @@
 #include "SettingsDialog.h"
+#include "TemplateEditDialog.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -16,6 +17,39 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog{parent} {
 }
 
 SettingsDialog::~SettingsDialog() {}
+
+void SettingsDialog::addTemplate()
+{
+    TemplateEditDialog dlg("", "", this);
+    dlg.setWindowTitle("新增模板");
+    if (dlg.exec() == QDialog::Accepted) {
+        QString title = dlg.getTemplateTitle();
+        QString content = dlg.getTemplateContent();
+
+        if (title.isEmpty()) {
+            QMessageBox::warning(this, "提示", "模板标题不能为空！");
+            return;
+        }
+
+        if (templateContentMap.contains(title)) {
+            QMessageBox::warning(this, "提示", "模板标题已存在！");
+            return;
+        }
+
+        templateContentMap[title] = content;
+        templateList->addItem(title);
+    }
+}
+
+void SettingsDialog::editTemplate()
+{
+
+}
+
+void SettingsDialog::deleteTemplate()
+{
+
+}
 
 void SettingsDialog::setupUi()
 {
@@ -44,7 +78,7 @@ void SettingsDialog::setupUi()
 
     // 模板管理
     auto* templateLabel = new QLabel("模板管理:");
-    auto* templateList = new QListWidget{this};
+    templateList = new QListWidget{this};
     templateList->addItem("标准");
     templateList->addItem("数学");
 
@@ -57,6 +91,9 @@ void SettingsDialog::setupUi()
     templateBtnLayout->addWidget(deleteTemplateBtn);
     templateBtnLayout->addStretch();
 
+    connect(addTemplateBtn, &QPushButton::clicked, this, &SettingsDialog::addTemplate);
+    connect(editTemplateBtn, &QPushButton::clicked, this, &SettingsDialog::editTemplate);
+    connect(deleteTemplateBtn, &QPushButton::clicked, this, &SettingsDialog::deleteTemplate);
 
     // 保存和取消按钮
     auto* btnLayout = new QHBoxLayout;
