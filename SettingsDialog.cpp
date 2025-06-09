@@ -42,6 +42,22 @@ void SettingsDialog::setupUi()
     auto* openWorkspaceBtn = new QPushButton{"一键打开", this};
     workspaceLayout->addWidget(openWorkspaceBtn);
 
+    // 模板管理
+    auto* templateLabel = new QLabel("模板管理:");
+    auto* templateList = new QListWidget{this};
+    templateList->addItem("标准");
+    templateList->addItem("数学");
+
+    auto* templateBtnLayout = new QHBoxLayout;
+    auto* addTemplateBtn = new QPushButton("新增模板", this);
+    auto* editTemplateBtn = new QPushButton("编辑模板", this);
+    auto* deleteTemplateBtn = new QPushButton("删除模板", this);
+    templateBtnLayout->addWidget(addTemplateBtn);
+    templateBtnLayout->addWidget(editTemplateBtn);
+    templateBtnLayout->addWidget(deleteTemplateBtn);
+    templateBtnLayout->addStretch();
+
+
     // 保存和取消按钮
     auto* btnLayout = new QHBoxLayout;
     btnLayout->addStretch();
@@ -50,7 +66,13 @@ void SettingsDialog::setupUi()
     btnLayout->addWidget(saveBtn);
     btnLayout->addWidget(cancelBtn);
 
+
     mainLayout->addLayout(latexmkLayout);
     mainLayout->addLayout(workspaceLayout);
+
+    mainLayout->addWidget(templateLabel);
+    mainLayout->addLayout(templateBtnLayout);
+    mainLayout->addWidget(templateList);
+
     mainLayout->addLayout(btnLayout);
 }
