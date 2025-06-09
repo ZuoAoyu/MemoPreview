@@ -31,5 +31,17 @@ void SettingsDialog::setupUi()
     auto* browseLatexmkBtn = new QPushButton{"浏览", this};
     latexmkLayout->addWidget(browseLatexmkBtn);
 
+    // 工作区路径
+    auto* workspaceLayout = new QHBoxLayout;
+    workspaceLayout->addWidget(new QLabel{"工作区路径:"});
+    auto* workspacePathEdit = new QLineEdit{this};
+    workspaceLayout->addWidget(workspacePathEdit);
+    auto* browseWorkspaceBtn = new QPushButton{"浏览", this};
+    workspaceLayout->addWidget(browseWorkspaceBtn);
+
+    auto* openWorkspaceBtn = new QPushButton{"一键打开", this};
+    workspaceLayout->addWidget(openWorkspaceBtn);
+
     mainLayout->addLayout(latexmkLayout);
+    mainLayout->addLayout(workspaceLayout);
 }
