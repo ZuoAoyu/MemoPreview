@@ -3,6 +3,7 @@
 #include <QToolBar>
 #include <QLabel>
 #include <QPdfPageSelector>
+#include "SettingsDialog.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -25,6 +26,11 @@ void MainWindow::createActions()
     showLogAction = new QAction{"日志", this};
     showConfigAction = new QAction{"设置", this};
     openWorkspaceAction = new QAction{"工作区", this};
+
+    connect(showConfigAction, &QAction::triggered, this, [this](){
+        SettingsDialog dlg(this);
+        dlg.exec();
+    });
 }
 
 void MainWindow::createToolBars()
