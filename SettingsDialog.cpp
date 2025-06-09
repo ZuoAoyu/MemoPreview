@@ -42,6 +42,15 @@ void SettingsDialog::setupUi()
     auto* openWorkspaceBtn = new QPushButton{"一键打开", this};
     workspaceLayout->addWidget(openWorkspaceBtn);
 
+    // 保存和取消按钮
+    auto* btnLayout = new QHBoxLayout;
+    btnLayout->addStretch();
+    auto* saveBtn = new QPushButton("保存", this);
+    auto* cancelBtn = new QPushButton("取消", this);
+    btnLayout->addWidget(saveBtn);
+    btnLayout->addWidget(cancelBtn);
+
     mainLayout->addLayout(latexmkLayout);
     mainLayout->addLayout(workspaceLayout);
+    mainLayout->addLayout(btnLayout);
 }
