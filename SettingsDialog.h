@@ -18,6 +18,10 @@ private slots:
 
     void saveSettings();
     void loadSettings();
+
+    void browseLatexmk();
+    void browseWorkspace();
+    void openWorkspace();
 private:
     void setupUi();
 

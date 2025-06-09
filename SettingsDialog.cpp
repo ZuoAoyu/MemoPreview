@@ -108,16 +108,43 @@ void SettingsDialog::saveSettings()
 void SettingsDialog::loadSettings()
 {
     QSettings settings{"MySoft", "App标题"};
-    settings.setValue("latexmkPath", latexmkPathEdit->text());
-    settings.setValue("workspacePath", workspacePathEdit->text());
+    latexmkPathEdit->setText(settings.value("latexmkPath").toString());
+    workspacePathEdit->setText(settings.value("workspacePath").toString());
 
     QStringList templates = settings.value("templates").toStringList();
     templateList->clear();
+    templateContentMap.clear();
 
     for (const auto& title : templates) {
         QString content = settings.value("templateContent/" + title, "").toString();
         templateContentMap[title] = content;
         templateList->addItem(title);
+    }
+}
+
+void SettingsDialog::browseLatexmk()
+{
+    QString fileName = QFileDialog::getOpenFileName(this, "选择latexmk路径");
+    if (!fileName.isEmpty()) {
+        latexmkPathEdit->setText(fileName);
+    }
+}
+
+void SettingsDialog::browseWorkspace()
+{
+    QString dirName = QFileDialog::getExistingDirectory(this, "选择工作区目录");
+    if (!dirName.isEmpty()) {
+        workspacePathEdit->setText(dirName);
+    }
+}
+
+void SettingsDialog::openWorkspace()
+{
+    QString path = workspacePathEdit->text();
+    if (!path.isEmpty()) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+    } else {
+        QMessageBox::warning(this, "警告", "工作区路径为空！");
     }
 }
 
@@ -133,6 +160,7 @@ void SettingsDialog::setupUi()
     latexmkPathEdit = new QLineEdit{this};
     latexmkLayout->addWidget(latexmkPathEdit);
     auto* browseLatexmkBtn = new QPushButton{"浏览", this};
+    connect(browseLatexmkBtn, &QPushButton::clicked, this, &SettingsDialog::browseLatexmk);
     latexmkLayout->addWidget(browseLatexmkBtn);
 
     // 工作区路径
@@ -141,9 +169,11 @@ void SettingsDialog::setupUi()
     workspacePathEdit = new QLineEdit{this};
     workspaceLayout->addWidget(workspacePathEdit);
     auto* browseWorkspaceBtn = new QPushButton{"浏览", this};
+    connect(browseWorkspaceBtn, &QPushButton::clicked, this, &SettingsDialog::browseWorkspace);
     workspaceLayout->addWidget(browseWorkspaceBtn);
 
     auto* openWorkspaceBtn = new QPushButton{"一键打开", this};
+    connect(openWorkspaceBtn, &QPushButton::clicked, this, &SettingsDialog::openWorkspace);
     workspaceLayout->addWidget(openWorkspaceBtn);
 
     // 模板管理
