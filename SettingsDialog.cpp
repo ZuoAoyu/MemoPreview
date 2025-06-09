@@ -41,12 +41,40 @@ void SettingsDialog::addTemplate()
 */
 void SettingsDialog::editTemplate()
 {
+    QListWidgetItem* currentItem = templateList->currentItem();
+    if (!currentItem) {
+        QMessageBox::warning(this, "提示", "请先选中要编辑的模板！");
+        return;
+    }
+
+    QString originalTitle = currentItem->text();
+    QStringList titles = templateContentMap.keys();
+    titles.removeAll(originalTitle); // 排除自身标题，在标题重名验证时允许和原有标题同名
+
+    TemplateEditDialog dlg{originalTitle, templateContentMap.value(originalTitle), titles, this};
+    if (dlg.exec() == QDialog::Accepted) {
+        QString newTitle = dlg.getTemplateTitle();
+        QString newContent = dlg.getTemplateContent();
+
+        templateContentMap.remove(originalTitle);
+        templateContentMap[newTitle] = newContent;
+
+        currentItem->setText(newTitle);
+    }
 
 }
 
 void SettingsDialog::deleteTemplate()
 {
+    QListWidgetItem* currentItem = templateList->currentItem();
+    if (!currentItem) {
+        QMessageBox::warning(this, "提示", "请先选中要删除的模板！");
+        return;
+    }
 
+    QString title = currentItem->text();
+    templateContentMap.remove(title);
+    delete currentItem;
 }
 
 void SettingsDialog::setupUi()
