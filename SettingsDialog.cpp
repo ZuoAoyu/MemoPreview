@@ -18,29 +18,27 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog{parent} {
 
 SettingsDialog::~SettingsDialog() {}
 
+/*
+新增模板时，用户输入标题如果已存在，提示用户，不关闭对话框并保留输入内容。
+*/
 void SettingsDialog::addTemplate()
 {
-    TemplateEditDialog dlg("", "", this);
+    QStringList titles = templateContentMap.keys(); // 当前已有的模板标题
+
+    TemplateEditDialog dlg("", "", titles, this);
     dlg.setWindowTitle("新增模板");
     if (dlg.exec() == QDialog::Accepted) {
         QString title = dlg.getTemplateTitle();
         QString content = dlg.getTemplateContent();
-
-        if (title.isEmpty()) {
-            QMessageBox::warning(this, "提示", "模板标题不能为空！");
-            return;
-        }
-
-        if (templateContentMap.contains(title)) {
-            QMessageBox::warning(this, "提示", "模板标题已存在！");
-            return;
-        }
 
         templateContentMap[title] = content;
         templateList->addItem(title);
     }
 }
 
+/*
+编辑模板时，用户修改标题与原来相同，不提示；若修改成其他已存在的标题，则提示。
+*/
 void SettingsDialog::editTemplate()
 {
 

@@ -3,9 +3,10 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QHBoxLayout>
+#include <QMessageBox>
 
-TemplateEditDialog::TemplateEditDialog(const QString &title, const QString &content, QWidget *parent)
-    :QDialog{parent}
+TemplateEditDialog::TemplateEditDialog(const QString &title, const QString &content, const QStringList &existingTitles, QWidget *parent)
+    :QDialog{parent}, existingTitles{existingTitles}
 {
     setupUi(title, content);
 }
@@ -18,6 +19,26 @@ QString TemplateEditDialog::getTemplateTitle() const
 QString TemplateEditDialog::getTemplateContent() const
 {
     return contentEdit->toPlainText();
+}
+
+void TemplateEditDialog::validateAndAccept()
+{
+    QString currentTitle = titleEdit->text().trimmed();
+
+    if (currentTitle.isEmpty()) {
+        QMessageBox::warning(this, "提示", "模板标题不能为空！");
+        titleEdit->setFocus();
+        return;
+    }
+
+    // 检查模板标题是否已存在
+    if (existingTitles.contains(currentTitle)) {
+        QMessageBox::warning(this, "提示", "模板标题已存在！");
+        titleEdit->setFocus();
+        return;
+    }
+
+    accept();
 }
 
 void TemplateEditDialog::setupUi(const QString &title, const QString &content)
@@ -40,6 +61,9 @@ void TemplateEditDialog::setupUi(const QString &title, const QString &content)
     auto* cancelBtn = new QPushButton("取消", this);
     btnLayout->addWidget(okBtn);
     btnLayout->addWidget(cancelBtn);
+
+    connect(okBtn, &QPushButton::clicked, this, &TemplateEditDialog::validateAndAccept);
+    connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
 
     mainLayout->addLayout(titleLayout);
     mainLayout->addWidget(new QLabel("模板内容:", this));
