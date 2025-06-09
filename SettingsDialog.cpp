@@ -14,6 +14,7 @@
 
 SettingsDialog::SettingsDialog(QWidget* parent) : QDialog{parent} {
     setupUi();
+    loadSettings();
 }
 
 SettingsDialog::~SettingsDialog() {}
@@ -77,6 +78,49 @@ void SettingsDialog::deleteTemplate()
     delete currentItem;
 }
 
+/*
+Qt 会自动选择合适的存储方式保存软件设置，比如在 Windows 下，会存到注册表里。
+
+Windows：HKEY_CURRENT_USER\Software\MySoft\App标题
+macOS：~/Library/Preferences/com.MySoft.App标题.plist
+Linux：~/.config/MySoft/App标题.conf
+
+QSettings 每次 setValue 都是立刻写入磁盘（或者操作系统持久化存储）的！
+不需要调用 save() 之类的函数。只要调用 setValue() 就立即持久化了。
+*/
+void SettingsDialog::saveSettings()
+{
+    QSettings settings{"MySoft", "App标题"};
+    settings.setValue("latexmkPath", latexmkPathEdit->text());
+    settings.setValue("workspacePath", workspacePathEdit->text());
+
+    QStringList templates;
+    for (int i = 0; i < templateList->count(); ++i) {
+        QString title = templateList->item(i)->text();
+        templates << title;
+        settings.setValue("templateContent/" + title, templateContentMap.value(title, ""));
+    }
+    settings.setValue("templates", templates);
+
+    accept();
+}
+
+void SettingsDialog::loadSettings()
+{
+    QSettings settings{"MySoft", "App标题"};
+    settings.setValue("latexmkPath", latexmkPathEdit->text());
+    settings.setValue("workspacePath", workspacePathEdit->text());
+
+    QStringList templates = settings.value("templates").toStringList();
+    templateList->clear();
+
+    for (const auto& title : templates) {
+        QString content = settings.value("templateContent/" + title, "").toString();
+        templateContentMap[title] = content;
+        templateList->addItem(title);
+    }
+}
+
 void SettingsDialog::setupUi()
 {
     setWindowTitle("设置");
@@ -86,7 +130,7 @@ void SettingsDialog::setupUi()
     // latexmk 路径
     auto* latexmkLayout = new QHBoxLayout;
     latexmkLayout->addWidget(new QLabel{"latexmk 路径:"});
-    auto * latexmkPathEdit = new QLineEdit{this};
+    latexmkPathEdit = new QLineEdit{this};
     latexmkLayout->addWidget(latexmkPathEdit);
     auto* browseLatexmkBtn = new QPushButton{"浏览", this};
     latexmkLayout->addWidget(browseLatexmkBtn);
@@ -94,7 +138,7 @@ void SettingsDialog::setupUi()
     // 工作区路径
     auto* workspaceLayout = new QHBoxLayout;
     workspaceLayout->addWidget(new QLabel{"工作区路径:"});
-    auto* workspacePathEdit = new QLineEdit{this};
+    workspacePathEdit = new QLineEdit{this};
     workspaceLayout->addWidget(workspacePathEdit);
     auto* browseWorkspaceBtn = new QPushButton{"浏览", this};
     workspaceLayout->addWidget(browseWorkspaceBtn);
@@ -105,8 +149,8 @@ void SettingsDialog::setupUi()
     // 模板管理
     auto* templateLabel = new QLabel("模板管理:");
     templateList = new QListWidget{this};
-    templateList->addItem("标准");
-    templateList->addItem("数学");
+    // templateList->addItem("标准");
+    // templateList->addItem("数学");
 
     auto* templateBtnLayout = new QHBoxLayout;
     auto* addTemplateBtn = new QPushButton("新增模板", this);
@@ -128,6 +172,9 @@ void SettingsDialog::setupUi()
     auto* cancelBtn = new QPushButton("取消", this);
     btnLayout->addWidget(saveBtn);
     btnLayout->addWidget(cancelBtn);
+
+    connect(saveBtn, &QPushButton::clicked, this, &SettingsDialog::saveSettings);
+    connect(cancelBtn, &QPushButton::clicked, this, &SettingsDialog::reject);
 
 
     mainLayout->addLayout(latexmkLayout);
