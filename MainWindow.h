@@ -21,6 +21,9 @@ private:
     QAction* showConfigAction = nullptr;
     QAction* openWorkspaceAction = nullptr;
 
+    QAction* startAction = nullptr;
+    QAction* stopAction = nullptr;
+
     void loadPdfDocument();
 
     QPdfDocument* m_pdfDocument = nullptr;

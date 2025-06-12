@@ -40,6 +40,10 @@ void MainWindow::createActions()
     showConfigAction = new QAction{"设置", this};
     openWorkspaceAction = new QAction{"工作区", this};
 
+    startAction = new QAction{"开始", this};
+    stopAction = new QAction{"结束", this};
+    stopAction->setEnabled(false);
+
     connect(showConfigAction, &QAction::triggered, this, [this](){
         SettingsDialog dlg(this);
         dlg.exec();
@@ -74,6 +78,8 @@ void MainWindow::createToolBars()
 
     {
         QToolBar *operateToolBar = new QToolBar;
+        operateToolBar->addAction(startAction);
+        operateToolBar->addAction(stopAction);
         operateToolBar->addAction(refreshAction);
         operateToolBar->addAction(showLogAction);
         operateToolBar->addAction(showConfigAction);
