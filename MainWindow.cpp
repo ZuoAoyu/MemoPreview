@@ -3,6 +3,8 @@
 #include <QToolBar>
 #include <QLabel>
 #include <QPdfPageSelector>
+#include <QSettings>
+#include <QFileInfo>
 #include "SettingsDialog.h"
 
 MainWindow::MainWindow(QWidget *parent)
@@ -14,6 +16,17 @@ MainWindow::MainWindow(QWidget *parent)
     setWindowTitle("在CMake中统一设置");
     setMinimumSize(160, 160);
     resize(480, 320);
+
+    // PDF 视图页
+    m_pdfDocument = new QPdfDocument(this);
+    m_pdfView = new QPdfView(this);
+    m_pdfView->setDocument(m_pdfDocument);
+
+    // 设置主窗口中心部件
+    setCentralWidget(m_pdfView);
+
+    // 加载 PDF
+    loadPdfDocument();
 }
 
 MainWindow::~MainWindow() {}
@@ -104,4 +117,18 @@ void MainWindow::createToolBars()
 
         addToolBar(pdfToolBar);
     }
+}
+
+void MainWindow::loadPdfDocument()
+{
+    QSettings settings{"MySoft", "App标题"};
+    QString workspacePath = settings.value("workspacePath", "").toString();
+    if (workspacePath.isEmpty()) {
+        return;
+    }
+    QString pdfPath = workspacePath + "/main.pdf";
+    if (!QFileInfo::exists(pdfPath)) {
+        return;
+    }
+    m_pdfDocument->load(pdfPath);
 }

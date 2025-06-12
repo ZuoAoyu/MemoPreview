@@ -2,6 +2,8 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QPdfDocument>
+#include <QPdfView>
 
 class MainWindow : public QMainWindow
 {
@@ -18,5 +20,10 @@ private:
     QAction* showLogAction = nullptr;
     QAction* showConfigAction = nullptr;
     QAction* openWorkspaceAction = nullptr;
+
+    void loadPdfDocument();
+
+    QPdfDocument* m_pdfDocument = nullptr;
+    QPdfView* m_pdfView = nullptr;
 };
 #endif // MAINWINDOW_H
