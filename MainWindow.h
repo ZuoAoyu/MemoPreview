@@ -4,6 +4,8 @@
 #include <QMainWindow>
 #include <QPdfDocument>
 #include <QPdfView>
+#include <QLabel>
+#include "LatexmkManager.h"
 
 class MainWindow : public QMainWindow
 {
@@ -12,6 +14,9 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+private slots:
+    void onStartLatexmk();
+    void onStopLatexmk();
 private:
     void createActions();
     void createToolBars();
@@ -28,5 +33,9 @@ private:
 
     QPdfDocument* m_pdfDocument = nullptr;
     QPdfView* m_pdfView = nullptr;
+
+    LatexmkManager* m_latexmkMgr = nullptr;
+    QLabel* statusLabel = nullptr;
+    QLabel* compileStatusLabel = nullptr;
 };
 #endif // MAINWINDOW_H

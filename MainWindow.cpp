@@ -5,6 +5,8 @@
 #include <QPdfPageSelector>
 #include <QSettings>
 #include <QFileInfo>
+#include <QStatusBar>
+#include <QDebug>
 #include "SettingsDialog.h"
 
 MainWindow::MainWindow(QWidget *parent)
@@ -27,9 +29,51 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 加载 PDF
     loadPdfDocument();
+
+    m_latexmkMgr = new LatexmkManager(this);
+
+    // 状态栏：编译/连接状态
+    statusLabel = new QLabel("未连接SuperMemo", this);
+    compileStatusLabel = new QLabel("未编译", this);
+    statusBar()->addPermanentWidget(statusLabel);
+    statusBar()->addPermanentWidget(compileStatusLabel);
+
+    // 连接latexmk manager信号
+    connect(m_latexmkMgr, &LatexmkManager::compileStatusChanged, compileStatusLabel, &QLabel::setText);
+    connect(m_latexmkMgr, &LatexmkManager::logUpdated, this, [this](const QString& log){
+        // 日志窗口逻辑，可弹窗或追加到文本区域
+    });
+    connect(m_latexmkMgr, &LatexmkManager::pdfUpdated, this, &MainWindow::loadPdfDocument);
+    connect(m_latexmkMgr, &LatexmkManager::processCrashed, this, [this](){
+        m_latexmkMgr->restart();
+    });
 }
 
 MainWindow::~MainWindow() {}
+
+void MainWindow::onStartLatexmk()
+{
+    QSettings settings{"MySoft", "App标题"};
+    QString latexmkPath = settings.value("latexmkPath", "latexmk").toString();
+    QString workspacePath = settings.value("workspacePath", "").toString();
+
+    if (latexmkPath.isEmpty() || workspacePath.isEmpty()) {
+        // 可弹窗提示
+        statusBar()->showMessage("latexmk路径或工作区未设置", 3000);
+        return;
+    }
+
+    m_latexmkMgr->start(latexmkPath, workspacePath);
+    startAction->setEnabled(false);
+    stopAction->setEnabled(true);
+}
+
+void MainWindow::onStopLatexmk()
+{
+    m_latexmkMgr->stop();
+    startAction->setEnabled(true);
+    stopAction->setEnabled(false);
+}
 
 void MainWindow::createActions()
 {
@@ -48,6 +92,10 @@ void MainWindow::createActions()
         SettingsDialog dlg(this);
         dlg.exec();
     });
+
+    // 按钮事件
+    connect(startAction, &QAction::triggered, this, &MainWindow::onStartLatexmk);
+    connect(stopAction, &QAction::triggered, this, &MainWindow::onStopLatexmk);
 }
 
 void MainWindow::createToolBars()

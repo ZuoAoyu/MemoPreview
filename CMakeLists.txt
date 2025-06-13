@@ -17,13 +17,14 @@ set(PROJECT_SOURCES
         MainWindow.cpp
         MainWindow.h
         SettingsDialog.h SettingsDialog.cpp
+        TemplateEditDialog.h TemplateEditDialog.cpp
+        LatexmkManager.h LatexmkManager.cpp
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
     qt_add_executable(MemoPreview
         MANUAL_FINALIZATION
         ${PROJECT_SOURCES}
-        TemplateEditDialog.h TemplateEditDialog.cpp
     )
 # Define target properties for Android with Qt 6 as:
 #    set_property(TARGET MemoPreview APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
