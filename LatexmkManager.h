@@ -6,6 +6,8 @@
 #include <QFileSystemWatcher>
 #include <QTimer>
 
+constexpr qint64 MAX_LOG_BUFFER_SIZE = 1024 * 1024; // 1MB
+
 class LatexmkManager : public QObject
 {
     Q_OBJECT
@@ -20,6 +22,11 @@ public:
 
     // 状态查询
     bool isRunning() const;
+
+    // 获取全部日志（可用于导出）
+    QString fullLog() const;
+    // 清空日志缓存
+    void clearLog();
 
 signals:
     void compileStatusChanged(const QString &status); // "编译中" "成功" "失败"
@@ -46,6 +53,9 @@ private:
     void emitStatus(const QString &status);
     void startLatexmk();
     void setupConnections();
+
+    // 裁剪日志
+    void trimLogBufferIfNeeded();
 };
 
 #endif // LATEXMKMANAGER_H

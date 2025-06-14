@@ -53,6 +53,16 @@ bool LatexmkManager::isRunning() const
     return m_process->state() == QProcess::Running;
 }
 
+QString LatexmkManager::fullLog() const
+{
+    return QString::fromLocal8Bit(m_logBuffer);
+}
+
+void LatexmkManager::clearLog()
+{
+    m_logBuffer.clear();
+}
+
 void LatexmkManager::handleProcessStarted()
 {
     emitStatus("编译中");
@@ -88,6 +98,7 @@ void LatexmkManager::handleReadyReadStandardOutput()
 {
     QByteArray out = m_process->readAllStandardOutput();
     m_logBuffer.append(out);
+    trimLogBufferIfNeeded(); // 裁剪日志避免无限膨胀
     emit logUpdated(QString::fromLocal8Bit(out));
     // 可根据内容自动检测“成功”、“失败”
     if (QString(out).contains("Output written on")) {
@@ -101,6 +112,7 @@ void LatexmkManager::handleReadyReadStandardError()
 {
     QByteArray err = m_process->readAllStandardError();
     m_logBuffer.append(err);
+    trimLogBufferIfNeeded(); // 裁剪日志避免无限膨胀
     emit logUpdated(QString::fromLocal8Bit(err));
     if (QString(err).contains("LaTeX Error")) {
         emitStatus("失败");
@@ -133,4 +145,12 @@ void LatexmkManager::setupConnections()
     connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, &LatexmkManager::handleProcessFinished);
     connect(m_process, &QProcess::readyReadStandardOutput, this, &LatexmkManager::handleReadyReadStandardOutput);
     connect(m_process, &QProcess::readyReadStandardError, this, &LatexmkManager::handleReadyReadStandardError);
+}
+
+void LatexmkManager::trimLogBufferIfNeeded()
+{
+    if (m_logBuffer.size() > MAX_LOG_BUFFER_SIZE) {
+        // 保留最后 N 字节
+        m_logBuffer = m_logBuffer.right(MAX_LOG_BUFFER_SIZE);
+    }
 }
