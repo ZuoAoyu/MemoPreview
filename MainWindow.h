@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QLabel>
 #include "LatexmkManager.h"
+#include "LogDialog.h"
 
 class MainWindow : public QMainWindow
 {
@@ -30,5 +31,7 @@ private:
     LatexmkManager* m_latexmkMgr = nullptr;
     QLabel* statusLabel = nullptr;
     QLabel* compileStatusLabel = nullptr;
+
+    LogDialog* logDialog = nullptr;
 };
 #endif // MAINWINDOW_H

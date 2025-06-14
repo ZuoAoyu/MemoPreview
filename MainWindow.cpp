@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QStatusBar>
 #include <QDebug>
+#include <QShortcut>
 #include "SettingsDialog.h"
 
 MainWindow::MainWindow(QWidget *parent)
@@ -33,6 +34,29 @@ MainWindow::MainWindow(QWidget *parent)
     });
     connect(m_latexmkMgr, &LatexmkManager::processCrashed, this, [this](){
         m_latexmkMgr->restart();
+    });
+
+    // 日志弹窗
+    logDialog = new LogDialog(this);
+
+    // 日志信号连接
+    connect(m_latexmkMgr, &LatexmkManager::logUpdated, this, [this](const QString& log){
+        logDialog->appendLog(log);
+    });
+
+    // 日志按钮事件
+    connect(showLogAction, &QAction::triggered, this, [this](){
+        logDialog->show();
+        logDialog->raise();
+        logDialog->activateWindow();
+    });
+
+    // 快捷键弹出日志窗口
+    QShortcut* logShortcut = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_L), this);
+    connect(logShortcut, &QShortcut::activated, this, [this](){
+        logDialog->show();
+        logDialog->raise();
+        logDialog->activateWindow();
     });
 }
 

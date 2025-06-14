@@ -19,6 +19,7 @@ set(PROJECT_SOURCES
         SettingsDialog.h SettingsDialog.cpp
         TemplateEditDialog.h TemplateEditDialog.cpp
         LatexmkManager.h LatexmkManager.cpp
+        LogDialog.h LogDialog.cpp
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
