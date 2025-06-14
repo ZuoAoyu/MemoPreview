@@ -14,6 +14,9 @@ LatexmkManager::LatexmkManager(QObject *parent)
 LatexmkManager::~LatexmkManager()
 {
     stop();
+#ifdef Q_OS_WIN
+    closeJobObject();
+#endif
 }
 
 void LatexmkManager::start(const QString &latexmkPath, const QString &workspaceDir)
@@ -38,7 +41,12 @@ void LatexmkManager::stop()
     }
 
     emit logUpdated("停止 latexmk 编译...");
-    m_process->kill();
+    // m_process->kill();
+
+#ifdef Q_OS_WIN
+    // 杀掉整个 Job Object 的所有进程树
+    closeJobObject(); // 这会终止 Job Object 下所有子进程
+#endif
 }
 
 void LatexmkManager::restart()
@@ -150,6 +158,9 @@ void LatexmkManager::startLatexmk()
         emit logUpdated("无法启动latexmk");
         return;
     }
+#ifdef Q_OS_WIN
+    assignProcessToJobObject(); // 分配 Job Object
+#endif
 }
 
 void LatexmkManager::setupConnections()
@@ -168,3 +179,64 @@ void LatexmkManager::trimLogBufferIfNeeded()
         m_logBuffer = m_logBuffer.right(MAX_LOG_BUFFER_SIZE);
     }
 }
+
+// -------  Job Object相关函数  -------
+
+#ifdef Q_OS_WIN
+
+void LatexmkManager::assignProcessToJobObject()
+{
+    // 1. 创建 Job Object（如未创建）
+    if (m_hJob) {
+        // 已有，先清掉
+        closeJobObject();
+    }
+
+    m_hJob = CreateJobObjectW(nullptr, nullptr);
+    if (!m_hJob) {
+        emit logUpdated("无法创建 Job Object");
+        return;
+    }
+
+    // 2. 设置 Job Object 终止时杀掉所有进程
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION jobInfo = {0};
+    jobInfo.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if (!SetInformationJobObject(m_hJob, JobObjectExtendedLimitInformation, &jobInfo, sizeof(jobInfo))) {
+        emit logUpdated("无法设置 Job Object 属性");
+        CloseHandle(m_hJob);
+        m_hJob = nullptr;
+        return;
+    }
+
+    // 3. 获取子进程句柄
+    qint64 pid = m_process->processId();
+    HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, DWORD(pid));
+    if (!hProcess) {
+        emit logUpdated("无法打开子进程句柄");
+        CloseHandle(m_hJob);
+        m_hJob = nullptr;
+        return;
+    }
+
+    // 4. 关联进程到 Job Object
+    if (!AssignProcessToJobObject(m_hJob, hProcess)) {
+        emit logUpdated("无法将进程加入 Job Object");
+        CloseHandle(hProcess);
+        CloseHandle(m_hJob);
+        m_hJob = nullptr;
+        return;
+    }
+
+    CloseHandle(hProcess); // 不再需要，Job Object 已持有进程
+}
+
+void LatexmkManager::closeJobObject()
+{
+    if (m_hJob) {
+        // 关闭Job对象会终止所有归属其下的进程
+        CloseHandle(m_hJob);
+        m_hJob = nullptr;
+    }
+}
+
+#endif

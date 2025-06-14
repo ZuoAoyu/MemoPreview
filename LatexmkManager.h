@@ -5,6 +5,7 @@
 #include <QProcess>
 #include <QFileSystemWatcher>
 #include <QTimer>
+#include <windows.h>
 
 constexpr qint64 MAX_LOG_BUFFER_SIZE = 1024 * 1024; // 1MB
 
@@ -57,6 +58,12 @@ private:
 
     // 裁剪日志
     void trimLogBufferIfNeeded();
+
+#ifdef Q_OS_WIN
+    HANDLE m_hJob = nullptr; // Job Object 句柄
+#endif
+    void assignProcessToJobObject();
+    void closeJobObject();
 };
 
 #endif // LATEXMKMANAGER_H
