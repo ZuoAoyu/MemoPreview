@@ -2,8 +2,6 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
-#include <QPdfDocument>
-#include <QPdfView>
 #include <QLabel>
 #include "LatexmkManager.h"
 
@@ -28,11 +26,6 @@ private:
 
     QAction* startAction = nullptr;
     QAction* stopAction = nullptr;
-
-    void loadPdfDocument();
-
-    QPdfDocument* m_pdfDocument = nullptr;
-    QPdfView* m_pdfView = nullptr;
 
     LatexmkManager* m_latexmkMgr = nullptr;
     QLabel* statusLabel = nullptr;

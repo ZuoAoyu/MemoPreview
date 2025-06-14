@@ -7,11 +7,6 @@
 LatexmkManager::LatexmkManager(QObject *parent)
 {
     m_process = new QProcess(this);
-    m_fileWatcher = new QFileSystemWatcher(this);
-    m_debounceTimer = new QTimer(this);
-    m_debounceTimer->setInterval(500); // 500ms 防抖
-    m_debounceTimer->setSingleShot(true);
-
     setupConnections();
 }
 
@@ -27,14 +22,11 @@ void LatexmkManager::start(const QString &latexmkPath, const QString &workspaceD
 
     m_workspaceDir = workspaceDir;
     m_latexmkPath = latexmkPath;
-    m_pdfPath = QDir(m_workspaceDir).filePath("main.pdf");
-    m_firstCompile = true;
 
     emitStatus("编译中");
     m_logBuffer.clear();
 
     startLatexmk();
-    watchPdfFile();
 }
 
 void LatexmkManager::stop()
@@ -44,7 +36,6 @@ void LatexmkManager::stop()
         m_process->kill();
         m_process->waitForFinished(3000);
     }
-    clearWatcher();
 }
 
 void LatexmkManager::restart()
@@ -54,7 +45,6 @@ void LatexmkManager::restart()
     QTimer::singleShot(1000, [this]() {
         emit logUpdated("latexmk崩溃，自动重启...");
         startLatexmk();
-        watchPdfFile();
     });
 }
 
@@ -117,35 +107,6 @@ void LatexmkManager::handleReadyReadStandardError()
     }
 }
 
-void LatexmkManager::handlePdfFileChanged(const QString &path)
-{
-    // 文件被pvc机制刷新，触发“防抖”计时器，合并多次触发
-    if (!m_debounceTimer->isActive()) {
-        emitStatus("编译中");
-    }
-    m_debounceTimer->start(); // 每次变动都延迟刷新
-}
-
-void LatexmkManager::handleDebounceTimeout()
-{
-    emit pdfUpdated();
-    emitStatus("成功");
-}
-
-void LatexmkManager::watchPdfFile()
-{
-    clearWatcher();
-    if (QFileInfo::exists(m_pdfPath)) {
-        m_fileWatcher->addPath(m_pdfPath);
-    }
-}
-
-void LatexmkManager::clearWatcher()
-{
-    for (const auto &f : m_fileWatcher->files())
-        m_fileWatcher->removePath(f);
-}
-
 void LatexmkManager::emitStatus(const QString &status)
 {
     emit compileStatusChanged(status);
@@ -154,7 +115,7 @@ void LatexmkManager::emitStatus(const QString &status)
 void LatexmkManager::startLatexmk()
 {
     // `-view=none`的作用是禁止自动预览，例如禁止自动打开 Sumatra PDF
-    QStringList args = {"-pdf", "-pvc", "main.tex"};
+    QStringList args = {"-pdf", "-pvc", "-outdir=build", "main.tex"};
     m_process->setWorkingDirectory(m_workspaceDir);
     m_process->start(m_latexmkPath, args);
 
@@ -172,7 +133,4 @@ void LatexmkManager::setupConnections()
     connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, &LatexmkManager::handleProcessFinished);
     connect(m_process, &QProcess::readyReadStandardOutput, this, &LatexmkManager::handleReadyReadStandardOutput);
     connect(m_process, &QProcess::readyReadStandardError, this, &LatexmkManager::handleReadyReadStandardError);
-
-    connect(m_fileWatcher, &QFileSystemWatcher::fileChanged, this, &LatexmkManager::handlePdfFileChanged);
-    connect(m_debounceTimer, &QTimer::timeout, this, &LatexmkManager::handleDebounceTimeout);
 }
