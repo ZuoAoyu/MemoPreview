@@ -35,6 +35,10 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_latexmkMgr, &LatexmkManager::processCrashed, this, [this](){
         m_latexmkMgr->restart();
     });
+    connect(m_latexmkMgr, &LatexmkManager::processStopped, this, [this](){
+        startAction->setEnabled(true);
+        stopAction->setEnabled(false);
+    });
 
     // 日志弹窗
     logDialog = new LogDialog(this);
@@ -52,7 +56,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     // 快捷键弹出日志窗口
-    QShortcut* logShortcut = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_L), this);
+    QShortcut* logShortcut = new QShortcut(QKeySequence(tr("Ctrl+L")), this);
     connect(logShortcut, &QShortcut::activated, this, [this](){
         logDialog->show();
         logDialog->raise();
@@ -60,7 +64,10 @@ MainWindow::MainWindow(QWidget *parent)
     });
 }
 
-MainWindow::~MainWindow() {}
+MainWindow::~MainWindow() {
+    delete m_latexmkMgr;
+    m_latexmkMgr = nullptr;
+}
 
 void MainWindow::onStartLatexmk()
 {

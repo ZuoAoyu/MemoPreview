@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QDebug>
 #include <QCoreApplication>
+#include <windows.h>
 
 LatexmkManager::LatexmkManager(QObject *parent)
 {
@@ -32,10 +33,12 @@ void LatexmkManager::start(const QString &latexmkPath, const QString &workspaceD
 void LatexmkManager::stop()
 {
     m_userStopping = true;
-    if (m_process->state() != QProcess::NotRunning) {
-        m_process->kill();
-        m_process->waitForFinished(3000);
+    if (m_process->state() == QProcess::NotRunning) {
+        return;
     }
+
+    emit logUpdated("停止 latexmk 编译...");
+    m_process->kill();
 }
 
 void LatexmkManager::restart()
@@ -72,10 +75,10 @@ void LatexmkManager::handleProcessError(QProcess::ProcessError error)
 {
     Q_UNUSED(error)
     emitStatus("latexmk进程错误");
-    emit logUpdated("latexmk 进程出错，准备重启...");
 
     // 只有不是用户主动 stop 时才自动重启
     if (!m_userStopping) {
+        emit logUpdated("latexmk 进程出错，准备重启...");
         emit processCrashed();
         // 自动重启由主窗口处理
     }
@@ -83,15 +86,26 @@ void LatexmkManager::handleProcessError(QProcess::ProcessError error)
 
 void LatexmkManager::handleProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
 {
-    Q_UNUSED(exitCode)
-    if (exitStatus == QProcess::CrashExit) {
+    if (exitStatus == QProcess::CrashExit && !m_userStopping) {
+        // 只有非用户主动停止时才认为是崩溃
         emitStatus("latexmk崩溃");
         emit logUpdated("latexmk崩溃，准备重启...");
-        if (!m_userStopping)
-            emit processCrashed();
+        emit processCrashed();
+    } else if (exitStatus == QProcess::CrashExit && m_userStopping) {
+        // 用户主动停止时的"崩溃"是正常的
+        emitStatus("latexmk已停止");
+        emit logUpdated("latexmk已被用户停止");
+        emit processStopped();
     } else {
         emitStatus("latexmk已退出");
+        if (exitCode != 0 && !m_userStopping) {
+            emit logUpdated(QString("latexmk退出，退出码: %1").arg(exitCode));
+        }
+        emit processStopped();
     }
+
+    // 重置停止标志
+    m_userStopping = false;
 }
 
 void LatexmkManager::handleReadyReadStandardOutput()

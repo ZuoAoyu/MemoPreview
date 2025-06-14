@@ -32,6 +32,7 @@ signals:
     void compileStatusChanged(const QString &status); // "编译中" "成功" "失败"
     void logUpdated(const QString &log);
     void processCrashed(); // 当latexmk进程崩溃
+    void processStopped(); // latexmk进程停止
 
 private slots:
     void handleProcessStarted();
