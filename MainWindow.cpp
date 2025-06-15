@@ -7,6 +7,8 @@
 #include <QDebug>
 #include <QShortcut>
 #include <QtConcurrent>
+#include <QDesktopServices>
+#include <QMessageBox>
 #include "SettingsDialog.h"
 #include "SuperMemoWindowUtils.h"
 
@@ -131,6 +133,17 @@ void MainWindow::onStopLatexmk()
     stopAction->setEnabled(false);
 }
 
+void MainWindow::openWorkspace()
+{
+    QSettings settings{"MySoft", "App标题"};
+    QString workspacePath = settings.value("workspacePath").toString();
+    if (!workspacePath.isEmpty()) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(workspacePath));
+    } else {
+        QMessageBox::warning(this, "警告", "工作区路径未设置！");
+    }
+}
+
 void MainWindow::createActions()
 {
     refreshAction = new QAction{"刷新", this};
@@ -141,6 +154,7 @@ void MainWindow::createActions()
     showLogAction = new QAction{"日志", this};
     showConfigAction = new QAction{"设置", this};
     openWorkspaceAction = new QAction{"工作区", this};
+    connect(openWorkspaceAction, &QAction::triggered, this, &MainWindow::openWorkspace);
 
     startAction = new QAction{"开始", this};
     stopAction = new QAction{"结束", this};

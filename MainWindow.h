@@ -21,6 +21,7 @@ public:
 private slots:
     void onStartLatexmk();
     void onStopLatexmk();
+    void openWorkspace();
 private:
     void createActions();
     void createToolBars();
