@@ -16,8 +16,9 @@ MainWindow::MainWindow(QWidget *parent)
     createToolBars();
 
     setWindowTitle("在CMake中统一设置");
-    setMinimumSize(160, 160);
-    resize(480, 320);
+    setMinimumSize(640, 320);
+    // resize(480, 320);
+    resize(sizeHint());
 
     m_latexmkMgr = new LatexmkManager(this);
 
@@ -129,6 +130,7 @@ void MainWindow::createToolBars()
         superWindowSelector->setToolTip("SuperMemo 窗口选择");
         // superWindowSelector->addItem("SuperMemo 1");
         // superWindowSelector->addItem("SuperMemo 2");
+        superWindowSelector->setMaximumWidth(200); // 最大宽度
 
         QComboBox* latexTemplateSelector = new QComboBox(settingToolBar);
         latexTemplateSelector->setToolTip("LaTeX 模板选择");
@@ -160,10 +162,8 @@ void MainWindow::refreshSuperMemoWindowList()
     m_superMemoWindows = SuperMemoWindowUtils::enumerateAllSuperMemoWindows();
     superWindowSelector->clear();
     for (const auto& info : m_superMemoWindows) {
-        QString label = QString("PID:%1 [%2] %3")
-        .arg(info.processId)
-            .arg(info.title)
-            .arg(info.processExe.isEmpty() ? QString() : info.processExe);
+        QString label = QString("[%1] PID:%2")
+        .arg(info.title).arg(info.processId);
         superWindowSelector->addItem(label);
     }
 
