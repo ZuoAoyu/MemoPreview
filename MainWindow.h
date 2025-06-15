@@ -3,8 +3,10 @@
 
 #include <QMainWindow>
 #include <QLabel>
+#include <QComboBox>
 #include "LatexmkManager.h"
 #include "LogDialog.h"
+#include "SuperMemoWindowInfo.h"
 
 class MainWindow : public QMainWindow
 {
@@ -20,6 +22,8 @@ private:
     void createActions();
     void createToolBars();
 
+    void refreshSuperMemoWindowList();
+
     QAction* refreshAction = nullptr;
     QAction* showLogAction = nullptr;
     QAction* showConfigAction = nullptr;
@@ -33,5 +37,8 @@ private:
     QLabel* compileStatusLabel = nullptr;
 
     LogDialog* logDialog = nullptr;
+
+    QComboBox* superWindowSelector = nullptr;
+    QVector<SuperMemoWindowInfo> m_superMemoWindows;
 };
 #endif // MAINWINDOW_H

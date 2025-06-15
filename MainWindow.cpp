@@ -1,5 +1,4 @@
 #include "MainWindow.h"
-#include <QComboBox>
 #include <QToolBar>
 #include <QLabel>
 #include <QSettings>
@@ -8,6 +7,7 @@
 #include <QDebug>
 #include <QShortcut>
 #include "SettingsDialog.h"
+#include "SuperMemoWindowUtils.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -62,6 +62,8 @@ MainWindow::MainWindow(QWidget *parent)
         logDialog->raise();
         logDialog->activateWindow();
     });
+
+    refreshSuperMemoWindowList();
 }
 
 MainWindow::~MainWindow() {
@@ -98,6 +100,8 @@ void MainWindow::createActions()
     refreshAction = new QAction{"刷新", this};
     refreshAction->setShortcut(tr("F5"));
 
+    connect(refreshAction, &QAction::triggered, this, &MainWindow::refreshSuperMemoWindowList);
+
     showLogAction = new QAction{"日志", this};
     showConfigAction = new QAction{"设置", this};
     openWorkspaceAction = new QAction{"工作区", this};
@@ -121,14 +125,10 @@ void MainWindow::createToolBars()
     {
         QToolBar *settingToolBar = new QToolBar;
 
-        QComboBox* superWindowSelector = new QComboBox(settingToolBar);
+        superWindowSelector = new QComboBox(settingToolBar);
         superWindowSelector->setToolTip("SuperMemo 窗口选择");
-        superWindowSelector->addItem("SuperMemo 1");
-        superWindowSelector->addItem("SuperMemo 2");
-        superWindowSelector->addItem("SuperMemo 3");
-        superWindowSelector->addItem("SuperMemo 4");
-        superWindowSelector->addItem("SuperMemo 5");
-        superWindowSelector->addItem("SuperMemo 6");
+        // superWindowSelector->addItem("SuperMemo 1");
+        // superWindowSelector->addItem("SuperMemo 2");
 
         QComboBox* latexTemplateSelector = new QComboBox(settingToolBar);
         latexTemplateSelector->setToolTip("LaTeX 模板选择");
@@ -152,5 +152,24 @@ void MainWindow::createToolBars()
         operateToolBar->addAction(openWorkspaceAction);
 
         addToolBar(operateToolBar);
+    }
+}
+
+void MainWindow::refreshSuperMemoWindowList()
+{
+    m_superMemoWindows = SuperMemoWindowUtils::enumerateAllSuperMemoWindows();
+    superWindowSelector->clear();
+    for (const auto& info : m_superMemoWindows) {
+        QString label = QString("PID:%1 [%2] %3")
+        .arg(info.processId)
+            .arg(info.title)
+            .arg(info.processExe.isEmpty() ? QString() : info.processExe);
+        superWindowSelector->addItem(label);
+    }
+
+    if (!m_superMemoWindows.isEmpty()) {
+        superWindowSelector->setCurrentIndex(0);
+    } else {
+        superWindowSelector->addItem("未发现SuperMemo窗口");
     }
 }
