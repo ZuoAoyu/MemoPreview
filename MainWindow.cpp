@@ -15,6 +15,7 @@ MainWindow::MainWindow(QWidget *parent)
 {
     createActions();
     createToolBars();
+    createStatusBar();
 
     ieTabWidget = new QTabWidget(this);
     ieTabWidget->setTabPosition(QTabWidget::North);
@@ -27,12 +28,6 @@ MainWindow::MainWindow(QWidget *parent)
     resize(sizeHint());
 
     m_latexmkMgr = new LatexmkManager(this);
-
-    // 状态栏：编译/连接状态
-    statusLabel = new QLabel("未连接SuperMemo", this);
-    compileStatusLabel = new QLabel("未编译", this);
-    statusBar()->addPermanentWidget(statusLabel);
-    statusBar()->addPermanentWidget(compileStatusLabel);
 
     // 连接latexmk manager信号
     connect(m_latexmkMgr, &LatexmkManager::compileStatusChanged, compileStatusLabel, &QLabel::setText);
@@ -71,9 +66,6 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     refreshSuperMemoWindowList();
-    if (!m_superMemoWindows.isEmpty()) {
-        currentSuperMemoHwnd = (HWND)m_superMemoWindows[0].hwnd;
-    }
 
     // 刷新定时器，防抖，每1s定时拉取
     // 定时轮询 SuperMemo 窗口内容，看看 IE 控件内容有没有变化
@@ -192,6 +184,15 @@ void MainWindow::createToolBars()
     }
 }
 
+void MainWindow::createStatusBar()
+{
+    // 状态栏：编译/连接状态
+    statusLabel = new QLabel("未连接SuperMemo", this);
+    compileStatusLabel = new QLabel("未编译", this);
+    statusBar()->addPermanentWidget(statusLabel);
+    statusBar()->addPermanentWidget(compileStatusLabel);
+}
+
 void MainWindow::refreshSuperMemoWindowList()
 {
     m_superMemoWindows = SuperMemoWindowUtils::enumerateAllSuperMemoWindows();
@@ -204,8 +205,14 @@ void MainWindow::refreshSuperMemoWindowList()
 
     if (!m_superMemoWindows.isEmpty()) {
         superWindowSelector->setCurrentIndex(0);
+        currentSuperMemoHwnd = (HWND)m_superMemoWindows[0].hwnd;
+        updateSuperMemoStatus("已连接SuperMemo", true);
+        refreshIeControls();
     } else {
         superWindowSelector->addItem("未发现SuperMemo窗口");
+        currentSuperMemoHwnd = nullptr;
+        updateSuperMemoStatus("未检测到SuperMemo窗口", false);
+        ieTabWidget->clear();
     }
 }
 
@@ -273,4 +280,11 @@ void MainWindow::updateLatexSourceIfNeeded()
         file.write(latexContent.toUtf8());
         file.close();
     }
+}
+
+void MainWindow::updateSuperMemoStatus(const QString &status, bool good)
+{
+    // good=true为绿色，false为红色
+    QString color = good ? "#19be6b" : "#e34f4f";
+    statusLabel->setText(QString("<font color='%1'>%2</font>").arg(color).arg(status));
 }

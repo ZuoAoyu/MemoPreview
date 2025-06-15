@@ -24,10 +24,13 @@ private slots:
 private:
     void createActions();
     void createToolBars();
+    void createStatusBar();
 
     void refreshSuperMemoWindowList();
     void refreshIeControls();
     void updateLatexSourceIfNeeded();
+
+    void updateSuperMemoStatus(const QString& status, bool good = true);
 
     QAction* refreshAction = nullptr;
     QAction* showLogAction = nullptr;
