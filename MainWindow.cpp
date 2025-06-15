@@ -6,6 +6,7 @@
 #include <QStatusBar>
 #include <QDebug>
 #include <QShortcut>
+#include <QtConcurrent>
 #include "SettingsDialog.h"
 #include "SuperMemoWindowUtils.h"
 
@@ -14,6 +15,11 @@ MainWindow::MainWindow(QWidget *parent)
 {
     createActions();
     createToolBars();
+
+    ieTabWidget = new QTabWidget(this);
+    ieTabWidget->setTabPosition(QTabWidget::North);
+    ieTabWidget->setDocumentMode(true);
+    setCentralWidget(ieTabWidget);
 
     setWindowTitle("在CMake中统一设置");
     setMinimumSize(640, 320);
@@ -65,9 +71,38 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     refreshSuperMemoWindowList();
+    if (!m_superMemoWindows.isEmpty()) {
+        currentSuperMemoHwnd = (HWND)m_superMemoWindows[0].hwnd;
+    }
+
+    // 刷新定时器，防抖，每1s定时拉取
+    // 定时轮询 SuperMemo 窗口内容，看看 IE 控件内容有没有变化
+    ieRefreshTimer = new QTimer(this);
+    ieRefreshTimer->setInterval(1000); // 1秒拉取一次
+    connect(ieRefreshTimer, &QTimer::timeout, this, &MainWindow::refreshIeControls);
+
+    // 防止连续高频写入 main.tex 文件，只在内容稳定后再保存。
+    debounceTimer = new QTimer(this);
+    debounceTimer->setSingleShot(true);
+    debounceTimer->setInterval(600); // 600ms防抖，内容连续变化时最后一次刷新
+    connect(debounceTimer, &QTimer::timeout, this, &MainWindow::updateLatexSourceIfNeeded);
+
+    connect(superWindowSelector, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int idx){
+        if (idx < 0 || idx >= m_superMemoWindows.size()) return;
+        currentSuperMemoHwnd = (HWND)m_superMemoWindows[idx].hwnd;
+        ieTabWidget->clear();
+        lastAllContentHash.clear();
+        // 立即刷新
+        refreshIeControls();
+    });
+
+    ieRefreshTimer->start();
 }
 
 MainWindow::~MainWindow() {
+    if (ieRefreshTimer) ieRefreshTimer->stop();
+    if (debounceTimer) debounceTimer->stop();
+
     delete m_latexmkMgr;
     m_latexmkMgr = nullptr;
 }
@@ -171,5 +206,71 @@ void MainWindow::refreshSuperMemoWindowList()
         superWindowSelector->setCurrentIndex(0);
     } else {
         superWindowSelector->addItem("未发现SuperMemo窗口");
+    }
+}
+
+void MainWindow::refreshIeControls()
+{
+    if (!currentSuperMemoHwnd) return;
+
+    // 开线程抓取，否则大窗口可能会卡
+    QtConcurrent::run([this](){
+        SuperMemoIeExtractor extractor(currentSuperMemoHwnd);
+        auto allCtrls = extractor.extractAllIeControls();
+
+        // 组装内容hash
+        QString allHash;
+        for (auto &ctrl : allCtrls) {
+            allHash += ctrl.content.left(1024); // 前1K字符
+        }
+        if (allHash == lastAllContentHash)
+            return; // 内容未变，跳过
+
+        lastAllContentHash = allHash;
+        currentIeControls = allCtrls;
+
+        // 更新UI（回到主线程）
+        QMetaObject::invokeMethod(this, [this, allCtrls]() {
+            ieTabWidget->clear();
+            if (allCtrls.empty()) {
+                auto* info = new QTextEdit;
+                info->setReadOnly(true);
+                info->setPlainText("未检测到任何 Internet Explorer_Server 控件！");
+                ieTabWidget->addTab(info, "无控件");
+                return;
+            }
+            // 以相反的顺序遍历控件，这样才和 SuperMemo 窗口中控件的顺序一致
+            for (int i = allCtrls.size() - 1; i >= 0; --i) {
+                auto &ctrl = allCtrls[i];
+                auto* textEdit = new QTextEdit;
+                textEdit->setReadOnly(true);
+                textEdit->setPlainText(ctrl.content);
+                QString tabLabel = QString("控件%1 %2").arg(allCtrls.size() - i).arg(ctrl.htmlTitle);
+                ieTabWidget->addTab(textEdit, tabLabel);
+            }
+
+            debounceTimer->start();
+        });
+    });
+}
+
+void MainWindow::updateLatexSourceIfNeeded()
+{
+    // 将所有控件内容拼到 main.tex
+    QSettings settings{"MySoft", "App标题"};
+    QString workspacePath = settings.value("workspacePath").toString();
+    if (workspacePath.isEmpty() || currentIeControls.empty()) return;
+    QString texFile = workspacePath + "/main.tex";
+
+    QString latexContent;
+    // 多控件拼成多段
+    for (auto& ctrl : currentIeControls) {
+        latexContent += "% === IE控件: " + ctrl.htmlTitle + "\n";
+        latexContent += ctrl.content + "\n\n";
+    }
+    QFile file(texFile);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        file.write(latexContent.toUtf8());
+        file.close();
     }
 }

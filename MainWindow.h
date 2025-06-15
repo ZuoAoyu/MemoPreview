@@ -4,9 +4,12 @@
 #include <QMainWindow>
 #include <QLabel>
 #include <QComboBox>
+#include <QTabWidget>
+#include <QTimer>
 #include "LatexmkManager.h"
 #include "LogDialog.h"
 #include "SuperMemoWindowInfo.h"
+#include "SuperMemoIeExtractor.h"
 
 class MainWindow : public QMainWindow
 {
@@ -23,6 +26,8 @@ private:
     void createToolBars();
 
     void refreshSuperMemoWindowList();
+    void refreshIeControls();
+    void updateLatexSourceIfNeeded();
 
     QAction* refreshAction = nullptr;
     QAction* showLogAction = nullptr;
@@ -40,5 +45,13 @@ private:
 
     QComboBox* superWindowSelector = nullptr;
     QVector<SuperMemoWindowInfo> m_superMemoWindows;
+
+    QTabWidget* ieTabWidget = nullptr;
+    QTimer* ieRefreshTimer = nullptr;
+    HWND currentSuperMemoHwnd = nullptr;
+    std::vector<IeControlContent> currentIeControls;
+    // 防抖定时器
+    QTimer* debounceTimer = nullptr;
+    QString lastAllContentHash;
 };
 #endif // MAINWINDOW_H
