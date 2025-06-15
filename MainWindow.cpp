@@ -349,7 +349,13 @@ void MainWindow::loadAllTemplatesFromSettings()
         currentTemplateTitle = lastTemplate;
         latexTemplateSelector->setCurrentText(lastTemplate);
     } else if (!templateContentMap.isEmpty()) {
-        currentTemplateTitle = templateContentMap.firstKey();
-        latexTemplateSelector->setCurrentText(currentTemplateTitle);
+        // 自动切到第一个模板，并修正 lastTemplateTitle
+        QString first = templateContentMap.firstKey();
+        currentTemplateTitle = first;
+        latexTemplateSelector->setCurrentText(first);
+        settings.setValue("lastTemplateTitle", first);  // 自动修正
+    } else {
+        currentTemplateTitle.clear();
+        settings.remove("lastTemplateTitle");
     }
 }
