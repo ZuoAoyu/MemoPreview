@@ -89,6 +89,14 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     ieRefreshTimer->start();
+
+    connect(latexTemplateSelector, &QComboBox::currentTextChanged, this, [this](const QString& title){
+        currentTemplateTitle = title;
+        // 可立即触发一次刷新内容写入 main.tex
+        updateLatexSourceIfNeeded();
+    });
+
+    loadAllTemplatesFromSettings();
 }
 
 MainWindow::~MainWindow() {
@@ -140,7 +148,10 @@ void MainWindow::createActions()
 
     connect(showConfigAction, &QAction::triggered, this, [this](){
         SettingsDialog dlg(this);
-        dlg.exec();
+        if (dlg.exec() == QDialog::Accepted) {
+            loadAllTemplatesFromSettings(); // 刷新模板
+            updateLatexSourceIfNeeded();
+        }
     });
 
     // 按钮事件
@@ -159,10 +170,11 @@ void MainWindow::createToolBars()
         // superWindowSelector->addItem("SuperMemo 2");
         superWindowSelector->setMaximumWidth(200); // 最大宽度
 
-        QComboBox* latexTemplateSelector = new QComboBox(settingToolBar);
+        latexTemplateSelector = new QComboBox(settingToolBar);
         latexTemplateSelector->setToolTip("LaTeX 模板选择");
-        latexTemplateSelector->addItem("标准");
-        latexTemplateSelector->addItem("数学");
+        latexTemplateSelector->setMaximumWidth(200); // 最大宽度
+        // latexTemplateSelector->addItem("标准");
+        // latexTemplateSelector->addItem("数学");
 
         settingToolBar->addWidget(superWindowSelector);
         settingToolBar->addSeparator(); // 插入分隔符，增加间距
@@ -266,17 +278,28 @@ void MainWindow::updateLatexSourceIfNeeded()
     // 将所有控件内容拼到 main.tex
     QSettings settings{"MySoft", "App标题"};
     QString workspacePath = settings.value("workspacePath").toString();
-    if (workspacePath.isEmpty() || currentIeControls.empty()) return;
+    if (workspacePath.isEmpty() || currentIeControls.empty() || currentTemplateTitle.isEmpty()) return;
+
     QString texFile = workspacePath + "/main.tex";
 
-    QString latexContent;
+    QString memoContent;
     // 多控件拼成多段
-    for (auto& ctrl : currentIeControls) {
-        latexContent += "% === IE控件: " + ctrl.htmlTitle + "\n";
-        latexContent += ctrl.content + "\n\n";
+    for (size_t i = 0; i < currentIeControls.size(); ++i) {
+        const auto& ctrl = currentIeControls[i];
+        memoContent += QString("%% === 控件%1 Title: %2 URL: %3\n")
+                           .arg(i+1).arg(ctrl.htmlTitle).arg(ctrl.url);
+        memoContent += ctrl.content + "\n\n";
     }
+
+    // 获取选中的模板内容
+    QString templateText = templateContentMap.value(currentTemplateTitle);
+    if (templateText.isEmpty()) templateText = "%CONTENT%";
+
+    QString latexContent = templateText;
+    latexContent.replace("%CONTENT%", memoContent);
+
     QFile file(texFile);
-    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+    if (file.open(QIODevice::WriteOnly)) {
         file.write(latexContent.toUtf8());
         file.close();
     }
@@ -287,4 +310,21 @@ void MainWindow::updateSuperMemoStatus(const QString &status, bool good)
     // good=true为绿色，false为红色
     QString color = good ? "#19be6b" : "#e34f4f";
     statusLabel->setText(QString("<font color='%1'>%2</font>").arg(color).arg(status));
+}
+
+void MainWindow::loadAllTemplatesFromSettings()
+{
+    QSettings settings{"MySoft", "App标题"};
+    QStringList templates = settings.value("templates").toStringList();
+    templateContentMap.clear();
+    latexTemplateSelector->clear();
+    for (const auto& title : templates) {
+        QString content = settings.value("templateContent/" + title, "").toString();
+        templateContentMap[title] = content;
+        latexTemplateSelector->addItem(title);
+    }
+    if (!templates.isEmpty()) {
+        currentTemplateTitle = templates[0];
+        latexTemplateSelector->setCurrentText(currentTemplateTitle);
+    }
 }

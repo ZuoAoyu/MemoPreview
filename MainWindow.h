@@ -32,6 +32,8 @@ private:
 
     void updateSuperMemoStatus(const QString& status, bool good = true);
 
+    void loadAllTemplatesFromSettings();
+
     QAction* refreshAction = nullptr;
     QAction* showLogAction = nullptr;
     QAction* showConfigAction = nullptr;
@@ -56,5 +58,9 @@ private:
     // 防抖定时器
     QTimer* debounceTimer = nullptr;
     QString lastAllContentHash;
+
+    QComboBox* latexTemplateSelector = nullptr;
+    QMap<QString, QString> templateContentMap; // 模板标题->内容
+    QString currentTemplateTitle;
 };
 #endif // MAINWINDOW_H
