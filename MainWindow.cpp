@@ -94,6 +94,11 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(latexTemplateSelector, &QComboBox::currentTextChanged, this, [this](const QString& title){
         currentTemplateTitle = title;
+
+        // 记住用户所选项
+        QSettings settings{"MySoft", "App标题"};
+        settings.setValue("lastTemplateTitle", title);
+
         // 可立即触发一次刷新内容写入 main.tex
         updateLatexSourceIfNeeded();
     });
@@ -330,6 +335,8 @@ void MainWindow::loadAllTemplatesFromSettings()
 {
     QSettings settings{"MySoft", "App标题"};
     QStringList templates = settings.value("templates").toStringList();
+    QString lastTemplate = settings.value("lastTemplateTitle").toString();
+
     templateContentMap.clear();
     latexTemplateSelector->clear();
     for (const auto& title : templates) {
@@ -337,8 +344,12 @@ void MainWindow::loadAllTemplatesFromSettings()
         templateContentMap[title] = content;
         latexTemplateSelector->addItem(title);
     }
-    if (!templates.isEmpty()) {
-        currentTemplateTitle = templates[0];
+
+    if (templateContentMap.contains(lastTemplate)) {
+        currentTemplateTitle = lastTemplate;
+        latexTemplateSelector->setCurrentText(lastTemplate);
+    } else if (!templateContentMap.isEmpty()) {
+        currentTemplateTitle = templateContentMap.firstKey();
         latexTemplateSelector->setCurrentText(currentTemplateTitle);
     }
 }
