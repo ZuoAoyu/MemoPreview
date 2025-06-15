@@ -1,5 +1,6 @@
 #include "SettingsDialog.h"
 #include "TemplateEditDialog.h"
+#include "SettingsUtils.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -13,6 +14,7 @@
 #include <QPushButton>
 
 SettingsDialog::SettingsDialog(QWidget* parent) : QDialog{parent} {
+    SettingsUtils::ensureInitialSettings();
     setupUi();
     loadSettings();
 }
