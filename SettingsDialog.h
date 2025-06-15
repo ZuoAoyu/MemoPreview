@@ -32,6 +32,7 @@ private:
     QListWidget* templateList;
 
     QLineEdit* latexmkPathEdit;
+    QLineEdit* latexmkArgsEdit;
     QLineEdit* workspacePathEdit;
 };
 

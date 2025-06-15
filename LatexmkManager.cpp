@@ -19,13 +19,14 @@ LatexmkManager::~LatexmkManager()
 #endif
 }
 
-void LatexmkManager::start(const QString &latexmkPath, const QString &workspaceDir)
+void LatexmkManager::start(const QString &latexmkPath, const QString &workspaceDir, const QString &latexmkArgs)
 {
     stop();
     m_userStopping = false; // 重置标志
 
     m_workspaceDir = workspaceDir;
     m_latexmkPath = latexmkPath;
+    m_latexmkArgs = latexmkArgs;
 
     emitStatus("编译中");
     m_logBuffer.clear();
@@ -148,8 +149,16 @@ void LatexmkManager::emitStatus(const QString &status)
 
 void LatexmkManager::startLatexmk()
 {
+    // 旧的写死参数：
     // `-view=none`的作用是禁止自动预览，例如禁止自动打开 Sumatra PDF
-    QStringList args = {"-pdf", "-pvc", "-outdir=build", "main.tex"};
+    // QStringList args = {"-pdf", "-pvc", "-outdir=build", "main.tex"};
+    QStringList args;
+    // 支持空格分割参数
+    if (!m_latexmkArgs.trimmed().isEmpty())
+        args = QProcess::splitCommand(m_latexmkArgs);
+    else
+        args = {"-pdf", "-pvc", "-outdir=build", "main.tex"};
+
     m_process->setWorkingDirectory(m_workspaceDir);
     m_process->start(m_latexmkPath, args);
 

@@ -118,6 +118,7 @@ void MainWindow::onStartLatexmk()
 {
     QSettings settings{"MySoft", "App标题"};
     QString latexmkPath = settings.value("latexmkPath", "latexmk").toString();
+    QString latexmkArgs = settings.value("latexmkArgs").toString();
     QString workspacePath = settings.value("workspacePath", "").toString();
 
     if (latexmkPath.isEmpty() || workspacePath.isEmpty()) {
@@ -126,7 +127,13 @@ void MainWindow::onStartLatexmk()
         return;
     }
 
-    m_latexmkMgr->start(latexmkPath, workspacePath);
+    // 强校验：是否含 -pvc 参数
+    if (!latexmkArgs.trimmed().isEmpty() && !latexmkArgs.contains("-pvc")) {
+        QMessageBox::warning(this, "警告", "latexmk 参数中必须包含 -pvc，否则无法持续编译！\n\n请加上 -pvc 参数。");
+        return;
+    }
+
+    m_latexmkMgr->start(latexmkPath, workspacePath, latexmkArgs);
     startAction->setEnabled(false);
     stopAction->setEnabled(true);
 }

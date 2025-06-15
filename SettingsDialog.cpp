@@ -94,6 +94,7 @@ void SettingsDialog::saveSettings()
 {
     QSettings settings{"MySoft", "App标题"};
     settings.setValue("latexmkPath", latexmkPathEdit->text());
+    settings.setValue("latexmkArgs", latexmkArgsEdit->text());
     settings.setValue("workspacePath", workspacePathEdit->text());
 
     QStringList templates;
@@ -111,6 +112,7 @@ void SettingsDialog::loadSettings()
 {
     QSettings settings{"MySoft", "App标题"};
     latexmkPathEdit->setText(settings.value("latexmkPath").toString());
+    latexmkArgsEdit->setText(settings.value("latexmkArgs").toString());
     workspacePathEdit->setText(settings.value("workspacePath").toString());
 
     QStringList templates = settings.value("templates").toStringList();
@@ -165,6 +167,22 @@ void SettingsDialog::setupUi()
     connect(browseLatexmkBtn, &QPushButton::clicked, this, &SettingsDialog::browseLatexmk);
     latexmkLayout->addWidget(browseLatexmkBtn);
 
+    auto* argsLayout = new QHBoxLayout;
+    argsLayout->addWidget(new QLabel{"latexmk 参数:"});
+    latexmkArgsEdit = new QLineEdit{this};
+    latexmkArgsEdit->setPlaceholderText("-pdf -pvc -outdir=build main.tex");
+    latexmkArgsEdit->setToolTip(
+        "指定 latexmk 编译参数。\n"
+        "常见示例：-pdf -pvc -outdir=build main.tex\n"
+        "说明：\n"
+        "  -pvc  必填，表示持续监控文件并自动编译。\n"
+        "  -pdf  用 pdflatex 编译。\n"
+        "  -outdir=build  输出文件到 build 文件夹。\n"
+        "  main.tex  要编译的 TeX 主文件。\n"
+        "如不确定建议保留默认。"
+        );
+    argsLayout->addWidget(latexmkArgsEdit);
+
     // 工作区路径
     auto* workspaceLayout = new QHBoxLayout;
     workspaceLayout->addWidget(new QLabel{"工作区路径:"});
@@ -210,6 +228,7 @@ void SettingsDialog::setupUi()
 
 
     mainLayout->addLayout(latexmkLayout);
+    mainLayout->addLayout(argsLayout);
     mainLayout->addLayout(workspaceLayout);
 
     mainLayout->addWidget(templateLabel);
