@@ -42,7 +42,7 @@ MemoPreview 监控 SuperMemo 窗口的内容变化，自动同步至 LaTeX 工�
 ## 使用方法
 
 1. **下载安装**
-    - 前往 [GitHub Releases 页面](https://github.com/yourusername/MemoPreview/releases) 下载已编译好的 MemoPreview 程序（无需自行编译）。
+    - 前往 [GitHub Releases 页面](https://github.com/ZuoAoyu/MemoPreview/releases) 下载已编译好的 MemoPreview 程序（无需自行编译）。
 
 2. **配置依赖**
     - 确保已安装 SuperMemo、TeX Live，并将 latexmk 加入环境变量。

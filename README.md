@@ -44,7 +44,7 @@ MemoPreview monitors the content of SuperMemo windows, automatically syncs to a 
 ## Getting Started
 
 1. **Download**
-    - Go to the [GitHub Releases page](https://github.com/yourusername/MemoPreview/releases) and download the pre-built MemoPreview executable (no compilation needed).
+    - Go to the [GitHub Releases page](https://github.com/ZuoAoyu/MemoPreview/releases) and download the pre-built MemoPreview executable (no compilation needed).
 
 2. **Set Up Dependencies**
     - Make sure SuperMemo and TeX Live are installed and `latexmk` is available in your PATH.
