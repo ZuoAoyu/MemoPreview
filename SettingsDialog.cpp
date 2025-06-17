@@ -170,7 +170,7 @@ void SettingsDialog::setupUi()
     auto* argsLayout = new QHBoxLayout;
     argsLayout->addWidget(new QLabel{"latexmk 参数:"});
     latexmkArgsEdit = new QLineEdit{this};
-    latexmkArgsEdit->setPlaceholderText("-pdf -pvc -outdir=build main.tex");
+    latexmkArgsEdit->setPlaceholderText("-pdf -pvc -interaction=nonstopmode -outdir=build main.tex");
     latexmkArgsEdit->setToolTip(
         "指定 latexmk 编译参数。\n"
         "常见示例：-pdf -pvc -outdir=build main.tex\n"

@@ -157,7 +157,8 @@ void LatexmkManager::startLatexmk()
     if (!m_latexmkArgs.trimmed().isEmpty())
         args = QProcess::splitCommand(m_latexmkArgs);
     else
-        args = {"-pdf", "-pvc", "-outdir=build", "main.tex"};
+        // -pdf -pvc -interaction=nonstopmode -outdir=build main.tex
+        args = {"-pdf", "-pvc", "-interaction=nonstopmode", "-outdir=build", "main.tex"};
 
     m_process->setWorkingDirectory(m_workspaceDir);
     m_process->start(m_latexmkPath, args);
