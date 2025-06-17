@@ -11,6 +11,7 @@
 #include <QMessageBox>
 #include "SettingsDialog.h"
 #include "SuperMemoWindowUtils.h"
+#include "Config.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -24,7 +25,7 @@ MainWindow::MainWindow(QWidget *parent)
     ieTabWidget->setDocumentMode(true);
     setCentralWidget(ieTabWidget);
 
-    setWindowTitle("在CMake中统一设置");
+    setWindowTitle(SOFTWARE_NAME);
     setMinimumSize(640, 320);
     // resize(480, 320);
     resize(sizeHint());

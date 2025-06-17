@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.16)
 
 project(MemoPreview VERSION 0.1 LANGUAGES CXX)
 
+set(SOFTWARE_NAME "${PROJECT_NAME}")
+configure_file("${CMAKE_SOURCE_DIR}/Config.h.in" "${CMAKE_BINARY_DIR}/Config.h")
+
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -38,6 +41,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         SuperMemoWindowUtils.h SuperMemoWindowUtils.cpp
         SuperMemoIeExtractor.h SuperMemoIeExtractor.cpp
         SettingsUtils.h SettingsUtils.cpp
+        Config.h.in
     )
 # Define target properties for Android with Qt 6 as:
 #    set_property(TARGET MemoPreview APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
@@ -58,6 +62,7 @@ else()
 endif()
 
 target_link_libraries(MemoPreview PRIVATE Qt${QT_VERSION_MAJOR}::Widgets WindowsOLE Qt6::Concurrent)
+target_include_directories(MemoPreview PRIVATE "${CMAKE_BINARY_DIR}")
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an
