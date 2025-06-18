@@ -27,14 +27,14 @@ void SettingsUtils::ensureInitialSettings()
 {
     QSettings settings{"MySoft", "App标题"};
 
-    // 1. latexmk 路径
+    // latexmk 路径
     if (!settings.contains("latexmkPath") || settings.value("latexmkPath").toString().isEmpty()) {
         QString latexmkPath = findInPath("latexmk");
         if (!latexmkPath.isEmpty())
             settings.setValue("latexmkPath", latexmkPath);
     }
 
-    // 2. 工作区目录
+    // 工作区目录
     if (!settings.contains("workspacePath") || settings.value("workspacePath").toString().isEmpty()) {
         // 用户文档目录下新建 Workspace
         QString docDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
@@ -46,10 +46,15 @@ void SettingsUtils::ensureInitialSettings()
         settings.setValue("workspacePath", defaultWs);
     }
 
-    // 3. 默认模板
+    // latexmk 参数
+    if (!settings.contains("latexmkArgs") || settings.value("latexmkArgs").toString().isEmpty()) {
+        settings.setValue("latexmkArgs", "-pdf -pvc -interaction=nonstopmode -outdir=build");
+    }
+
+    // 默认模板
     QStringList templates = settings.value("templates").toStringList();
     if (templates.isEmpty()) {
-        QString defaultTemplateTitle = "标准";
+        QString defaultTemplateTitle = "默认";
         QString defaultTemplateContent =
             R"(\documentclass{article}
 \usepackage{amsmath,amssymb}
@@ -62,5 +67,27 @@ void SettingsUtils::ensureInitialSettings()
         templates << defaultTemplateTitle;
         settings.setValue("templates", templates);
         settings.setValue("templateContent/" + defaultTemplateTitle, defaultTemplateContent);
+    }
+
+    // 创建 main.tex 文件
+    QString ws = settings.value("workspacePath").toString();
+    if (!ws.isEmpty()) {
+        QString mainTexPath = QDir(ws).filePath("main.tex");
+        if (!QFile::exists(mainTexPath)) {
+            QFile f(mainTexPath);
+            if (f.open(QIODevice::WriteOnly)) {
+                QString content =
+                    R"(\documentclass{article}
+\usepackage{amsmath,amssymb}
+\begin{document}
+
+Welcome to MemoPreview!
+
+\end{document}
+)";
+                f.write(content.toUtf8());
+                f.close();
+            }
+        }
     }
 }

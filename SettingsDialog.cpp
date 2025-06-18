@@ -1,6 +1,5 @@
 #include "SettingsDialog.h"
 #include "TemplateEditDialog.h"
-#include "SettingsUtils.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -14,7 +13,6 @@
 #include <QPushButton>
 
 SettingsDialog::SettingsDialog(QWidget* parent) : QDialog{parent} {
-    SettingsUtils::ensureInitialSettings();
     setupUi();
     loadSettings();
 }
@@ -170,16 +168,17 @@ void SettingsDialog::setupUi()
     auto* argsLayout = new QHBoxLayout;
     argsLayout->addWidget(new QLabel{"latexmk 参数:"});
     latexmkArgsEdit = new QLineEdit{this};
-    latexmkArgsEdit->setPlaceholderText("-pdf -pvc -interaction=nonstopmode -outdir=build main.tex");
+    latexmkArgsEdit->setPlaceholderText("-pdf -pvc -interaction=nonstopmode -outdir=build");
     latexmkArgsEdit->setToolTip(
         "指定 latexmk 编译参数。\n"
-        "常见示例：-pdf -pvc -outdir=build main.tex\n"
+        "常见示例：-pdf -pvc -interaction=nonstopmode -outdir=build\n"
         "说明：\n"
         "  -pvc  必填，表示持续监控文件并自动编译。\n"
         "  -pdf  用 pdflatex 编译。\n"
         "  -outdir=build  输出文件到 build 文件夹。\n"
-        "  main.tex  要编译的 TeX 主文件。\n"
-        "如不确定建议保留默认。"
+        "如不确定建议保留默认。\n\n"
+        "按照示例填写后，latexmk 运行时使用的完整命令：\n"
+        "latexmk -pdf -pvc -interaction=nonstopmode -outdir=build main.tex\n"
         );
     argsLayout->addWidget(latexmkArgsEdit);
 

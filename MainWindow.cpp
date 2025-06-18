@@ -12,10 +12,14 @@
 #include "SettingsDialog.h"
 #include "SuperMemoWindowUtils.h"
 #include "Config.h"
+#include "SettingsUtils.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
+    // 首次启动时的初始化设置
+    SettingsUtils::ensureInitialSettings();
+
     createActions();
     createToolBars();
     createStatusBar();

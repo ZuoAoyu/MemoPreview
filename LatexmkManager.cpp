@@ -158,7 +158,10 @@ void LatexmkManager::startLatexmk()
         args = QProcess::splitCommand(m_latexmkArgs);
     else
         // -pdf -pvc -interaction=nonstopmode -outdir=build main.tex
-        args = {"-pdf", "-pvc", "-interaction=nonstopmode", "-outdir=build", "main.tex"};
+        args = {"-pdf", "-pvc", "-interaction=nonstopmode", "-outdir=build"};
+
+    // 把 main.tex 单独摘出来。该文件是固定的，无法被用户自定义
+    args.append("main.tex");
 
     m_process->setWorkingDirectory(m_workspaceDir);
     m_process->start(m_latexmkPath, args);
