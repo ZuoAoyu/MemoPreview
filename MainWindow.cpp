@@ -101,7 +101,7 @@ MainWindow::MainWindow(QWidget *parent)
         currentTemplateTitle = title;
 
         // 记住用户所选项
-        QSettings settings{"MySoft", "App标题"};
+        QSettings settings{SOFTWARE_NAME, SOFTWARE_NAME};
         settings.setValue("lastTemplateTitle", title);
 
         // 可立即触发一次刷新内容写入 main.tex
@@ -121,7 +121,7 @@ MainWindow::~MainWindow() {
 
 void MainWindow::onStartLatexmk()
 {
-    QSettings settings{"MySoft", "App标题"};
+    QSettings settings{SOFTWARE_NAME, SOFTWARE_NAME};
     QString latexmkPath = settings.value("latexmkPath", "latexmk").toString();
     QString latexmkArgs = settings.value("latexmkArgs").toString();
     QString workspacePath = settings.value("workspacePath", "").toString();
@@ -152,7 +152,7 @@ void MainWindow::onStopLatexmk()
 
 void MainWindow::openWorkspace()
 {
-    QSettings settings{"MySoft", "App标题"};
+    QSettings settings{SOFTWARE_NAME, SOFTWARE_NAME};
     QString workspacePath = settings.value("workspacePath").toString();
     if (!workspacePath.isEmpty()) {
         QDesktopServices::openUrl(QUrl::fromLocalFile(workspacePath));
@@ -307,7 +307,7 @@ void MainWindow::refreshIeControls()
 void MainWindow::updateLatexSourceIfNeeded()
 {
     // 将所有控件内容拼到 main.tex
-    QSettings settings{"MySoft", "App标题"};
+    QSettings settings{SOFTWARE_NAME, SOFTWARE_NAME};
     QString workspacePath = settings.value("workspacePath").toString();
     if (workspacePath.isEmpty() || currentIeControls.empty() || currentTemplateTitle.isEmpty()) return;
 
@@ -345,7 +345,7 @@ void MainWindow::updateSuperMemoStatus(const QString &status, bool good)
 
 void MainWindow::loadAllTemplatesFromSettings()
 {
-    QSettings settings{"MySoft", "App标题"};
+    QSettings settings{SOFTWARE_NAME, SOFTWARE_NAME};
     QStringList templates = settings.value("templates").toStringList();
     QString lastTemplate = settings.value("lastTemplateTitle").toString();
 

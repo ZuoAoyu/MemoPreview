@@ -4,6 +4,7 @@
 #include <QDialog>
 #include <QStringList>
 #include <QListWidget>
+#include <QComboBox>
 
 class SettingsDialog : public QDialog
 {
@@ -34,6 +35,8 @@ private:
     QLineEdit* latexmkPathEdit;
     QLineEdit* latexmkArgsEdit;
     QLineEdit* workspacePathEdit;
+
+    QComboBox* langSelector;
 };
 
 #endif // SETTINGSDIALOG_H

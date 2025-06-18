@@ -1,1 +1,6 @@
+#ifndef CONFIG_H
+#define CONFIG_H
+
 #define SOFTWARE_NAME "@SOFTWARE_NAME@"
+
+#endif

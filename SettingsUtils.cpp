@@ -1,4 +1,5 @@
 #include "SettingsUtils.h"
+#include "Config.h"
 
 #include <QSettings>
 #include <QStandardPaths>
@@ -25,7 +26,7 @@ QString SettingsUtils::findInPath(const QString &exeName)
 
 void SettingsUtils::ensureInitialSettings()
 {
-    QSettings settings{"MySoft", "App标题"};
+    QSettings settings{SOFTWARE_NAME, SOFTWARE_NAME};
 
     // latexmk 路径
     if (!settings.contains("latexmkPath") || settings.value("latexmkPath").toString().isEmpty()) {

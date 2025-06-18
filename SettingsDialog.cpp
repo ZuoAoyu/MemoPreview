@@ -1,5 +1,6 @@
 #include "SettingsDialog.h"
 #include "TemplateEditDialog.h"
+#include "Config.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -90,7 +91,10 @@ QSettings 每次 setValue 都是立刻写入磁盘（或者操作系统持久化
 */
 void SettingsDialog::saveSettings()
 {
-    QSettings settings{"MySoft", "App标题"};
+    QSettings settings{SOFTWARE_NAME, SOFTWARE_NAME};
+
+    settings.setValue("lang", langSelector->currentData().toString());
+
     settings.setValue("latexmkPath", latexmkPathEdit->text());
     settings.setValue("latexmkArgs", latexmkArgsEdit->text());
     settings.setValue("workspacePath", workspacePathEdit->text());
@@ -108,7 +112,13 @@ void SettingsDialog::saveSettings()
 
 void SettingsDialog::loadSettings()
 {
-    QSettings settings{"MySoft", "App标题"};
+    QSettings settings{SOFTWARE_NAME, SOFTWARE_NAME};
+
+    QString curLang = settings.value("lang", QLocale::system().name()).toString();
+    int idx = langSelector->findData(curLang);
+    if (idx >= 0)
+        langSelector->setCurrentIndex(idx);
+
     latexmkPathEdit->setText(settings.value("latexmkPath").toString());
     latexmkArgsEdit->setText(settings.value("latexmkArgs").toString());
     workspacePathEdit->setText(settings.value("workspacePath").toString());
@@ -155,6 +165,15 @@ void SettingsDialog::setupUi()
     setWindowTitle("设置");
 
     auto* mainLayout = new QVBoxLayout{this};
+
+    // 界面语言切换
+    auto* langLayout = new QHBoxLayout;
+    langLayout->addWidget(new QLabel(tr("界面语言:")));
+    langSelector = new QComboBox(this);
+    langSelector->addItem("简体中文", "zh_CN");
+    langSelector->addItem("English", "en_US");
+    langLayout->addWidget(langSelector);
+    langLayout->addStretch();
 
     // latexmk 路径
     auto* latexmkLayout = new QHBoxLayout;
@@ -225,7 +244,7 @@ void SettingsDialog::setupUi()
     connect(saveBtn, &QPushButton::clicked, this, &SettingsDialog::saveSettings);
     connect(cancelBtn, &QPushButton::clicked, this, &SettingsDialog::reject);
 
-
+    mainLayout->addLayout(langLayout);
     mainLayout->addLayout(latexmkLayout);
     mainLayout->addLayout(argsLayout);
     mainLayout->addLayout(workspaceLayout);
