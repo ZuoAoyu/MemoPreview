@@ -70,6 +70,12 @@ bool SuperMemoIeExtractor::extractControlContent(HWND hwnd, IeControlContent &in
     // 获取HTML文档内容
     info.content = getDocumentContent(hwnd, info.htmlTitle, info.url);
 
+    // 对于一个 SuperMemo Element，如果为其添加了 Reference，Element 末尾会有相关的字符串，需要在编译 PDF 文档时将其去除
+    int suRefPos = info.content.lastIndexOf("#SuperMemo Reference:");
+    if (suRefPos != -1) {
+        info.content = info.content.left(suRefPos);
+    }
+
     return true;
 }
 
