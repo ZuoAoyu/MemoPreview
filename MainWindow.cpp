@@ -74,10 +74,10 @@ MainWindow::MainWindow(QWidget *parent)
 
     refreshSuperMemoWindowList();
 
-    // 刷新定时器，防抖，每1s定时拉取
+    // 刷新定时器，防抖，每0.3s定时拉取
     // 定时轮询 SuperMemo 窗口内容，看看 IE 控件内容有没有变化
     ieRefreshTimer = new QTimer(this);
-    ieRefreshTimer->setInterval(1000); // 1秒拉取一次
+    ieRefreshTimer->setInterval(300); // 0.3秒拉取一次
     connect(ieRefreshTimer, &QTimer::timeout, this, &MainWindow::refreshIeControls);
 
     // 防止连续高频写入 main.tex 文件，只在内容稳定后再保存。
@@ -271,7 +271,7 @@ void MainWindow::refreshIeControls()
         // 组装内容hash
         QString allHash;
         for (auto &ctrl : allCtrls) {
-            allHash += ctrl.content.left(1024); // 前1K字符
+            allHash += ctrl.content;
         }
         if (allHash == lastAllContentHash)
             return; // 内容未变，跳过
