@@ -314,12 +314,15 @@ void MainWindow::updateLatexSourceIfNeeded()
     QString texFile = workspacePath + "/main.tex";
 
     QString memoContent;
+    bool firstControl = true;
     // 多控件拼成多段
     for (int i = currentIeControls.size() - 1; i >= 0; --i) {
+        if (!firstControl) memoContent += "\\newpage\n";
         const auto& ctrl = currentIeControls[i];
         memoContent += QString("%% === 控件%1 Title: %2 URL: %3\n")
                            .arg(i+1).arg(ctrl.htmlTitle).arg(ctrl.url);
         memoContent += ctrl.content + "\n\n";
+        firstControl = false;
     }
 
     // 获取选中的模板内容
