@@ -315,7 +315,7 @@ void MainWindow::updateLatexSourceIfNeeded()
 
     QString memoContent;
     // 多控件拼成多段
-    for (size_t i = 0; i < currentIeControls.size(); ++i) {
+    for (int i = currentIeControls.size() - 1; i >= 0; --i) {
         const auto& ctrl = currentIeControls[i];
         memoContent += QString("%% === 控件%1 Title: %2 URL: %3\n")
                            .arg(i+1).arg(ctrl.htmlTitle).arg(ctrl.url);
