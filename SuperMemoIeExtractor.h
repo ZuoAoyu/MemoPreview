@@ -42,9 +42,6 @@ private:
 
     // 获取 IHTMLDocument2 内容相关
     static QString getDocumentContent(HWND hwnd, QString &title, QString &url);
-
-    // BSTR->QString
-    static QString bstrToQString(BSTR bstr);
 };
 
 #endif // SUPERMEMOIEEXTRACTOR_H
