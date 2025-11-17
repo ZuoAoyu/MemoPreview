@@ -74,16 +74,16 @@ MainWindow::MainWindow(QWidget *parent)
 
     refreshSuperMemoWindowList();
 
-    // 刷新定时器，防抖，每0.3s定时拉取
+    // 刷新定时器，防抖，每0.5s定时拉取
     // 定时轮询 SuperMemo 窗口内容，看看 IE 控件内容有没有变化
     ieRefreshTimer = new QTimer(this);
-    ieRefreshTimer->setInterval(300); // 0.3秒拉取一次
+    ieRefreshTimer->setInterval(500); // 0.5秒拉取一次，降低CPU占用
     connect(ieRefreshTimer, &QTimer::timeout, this, &MainWindow::refreshIeControls);
 
     // 防止连续高频写入 main.tex 文件，只在内容稳定后再保存。
     debounceTimer = new QTimer(this);
     debounceTimer->setSingleShot(true);
-    debounceTimer->setInterval(600); // 600ms防抖，内容连续变化时最后一次刷新
+    debounceTimer->setInterval(1000); // 1000ms防抖，内容连续变化时最后一次刷新
     connect(debounceTimer, &QTimer::timeout, this, &MainWindow::updateLatexSourceIfNeeded);
 
     connect(superWindowSelector, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int idx){
@@ -263,16 +263,45 @@ void MainWindow::refreshIeControls()
 {
     if (!currentSuperMemoHwnd) return;
 
+    // 如果上次提取还在进行中，跳过本次
+    if (isExtracting) return;
+
+    // 检测SuperMemo窗口是否是前台窗口
+    HWND foregroundWindow = GetForegroundWindow();
+    bool isSuperMemoActive = (foregroundWindow == currentSuperMemoHwnd);
+
+    // 如果SuperMemo不是活动窗口，降低轮询频率
+    // 每4次轮询（2秒）才真正执行一次提取
+    if (!isSuperMemoActive) {
+        pollCounter++;
+        if (pollCounter < 4) {
+            return; // 跳过本次提取
+        }
+        pollCounter = 0; // 重置计数器
+    } else {
+        pollCounter = 0; // SuperMemo活跃时，每次都提取
+    }
+
+    isExtracting = true;
+
     // 开线程抓取，否则大窗口可能会卡
     QtConcurrent::run([this](){
         SuperMemoIeExtractor extractor(currentSuperMemoHwnd);
         auto allCtrls = extractor.extractAllIeControls();
 
-        // 组装内容hash
-        QString allHash;
+        // 组装内容hash，使用QStringList避免频繁的字符串拼接
+        QStringList contentList;
+        contentList.reserve(allCtrls.size());
         for (auto &ctrl : allCtrls) {
-            allHash += ctrl.content;
+            contentList << ctrl.content;
         }
+        QString allHash = contentList.join("");
+
+        // 在返回前重置提取标志
+        QMetaObject::invokeMethod(this, [this]() {
+            isExtracting = false;
+        });
+
         if (allHash == lastAllContentHash)
             return; // 内容未变，跳过
 

@@ -59,6 +59,10 @@ private:
     // 防抖定时器
     QTimer* debounceTimer = nullptr;
     QString lastAllContentHash;
+    // 提取状态标志，防止重叠执行
+    bool isExtracting = false;
+    // 轮询计数器，用于实现自适应轮询频率
+    int pollCounter = 0;
 
     QComboBox* latexTemplateSelector = nullptr;
     QMap<QString, QString> templateContentMap; // 模板标题->内容
