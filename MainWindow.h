@@ -10,6 +10,7 @@
 #include "LogDialog.h"
 #include "SuperMemoWindowInfo.h"
 #include "SuperMemoIeExtractor.h"
+#include "WindowEventMonitor.h"
 
 class MainWindow : public QMainWindow
 {
@@ -63,6 +64,8 @@ private:
     bool isExtracting = false;
     // 轮询计数器，用于实现自适应轮询频率
     int pollCounter = 0;
+    // Windows事件监控器（事件驱动）
+    WindowEventMonitor* m_eventMonitor = nullptr;
 
     QComboBox* latexTemplateSelector = nullptr;
     QMap<QString, QString> templateContentMap; // 模板标题->内容

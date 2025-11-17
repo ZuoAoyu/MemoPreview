@@ -13,6 +13,7 @@
 #include "SuperMemoWindowUtils.h"
 #include "Config.h"
 #include "SettingsUtils.h"
+#include "WindowEventMonitor.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -74,7 +75,11 @@ MainWindow::MainWindow(QWidget *parent)
 
     refreshSuperMemoWindowList();
 
-    // 刷新定时器，防抖，每0.5s定时拉取
+    // 创建Windows事件监控器（事件驱动方式）
+    m_eventMonitor = new WindowEventMonitor(this);
+    connect(m_eventMonitor, &WindowEventMonitor::contentMaybeChanged, this, &MainWindow::refreshIeControls);
+
+    // 刷新定时器，作为备用检测机制（防止事件丢失）
     // 定时轮询 SuperMemo 窗口内容，看看 IE 控件内容有没有变化
     ieRefreshTimer = new QTimer(this);
     ieRefreshTimer->setInterval(500); // 0.5秒拉取一次，降低CPU占用
@@ -91,6 +96,14 @@ MainWindow::MainWindow(QWidget *parent)
         currentSuperMemoHwnd = (HWND)m_superMemoWindows[idx].hwnd;
         ieTabWidget->clear();
         lastAllContentHash.clear();
+
+        // 启动Windows事件监控器
+        if (currentSuperMemoHwnd) {
+            m_eventMonitor->startMonitoring(currentSuperMemoHwnd);
+        } else {
+            m_eventMonitor->stopMonitoring();
+        }
+
         // 立即刷新
         refreshIeControls();
     });
@@ -249,11 +262,19 @@ void MainWindow::refreshSuperMemoWindowList()
     if (!m_superMemoWindows.isEmpty()) {
         superWindowSelector->setCurrentIndex(0);
         currentSuperMemoHwnd = (HWND)m_superMemoWindows[0].hwnd;
+
+        // 启动Windows事件监控器
+        m_eventMonitor->startMonitoring(currentSuperMemoHwnd);
+
         updateSuperMemoStatus("已连接SuperMemo", true);
         refreshIeControls();
     } else {
         superWindowSelector->addItem("未发现SuperMemo窗口");
         currentSuperMemoHwnd = nullptr;
+
+        // 停止事件监控
+        m_eventMonitor->stopMonitoring();
+
         updateSuperMemoStatus("未检测到SuperMemo窗口", false);
         ieTabWidget->clear();
     }
