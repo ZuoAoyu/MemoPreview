@@ -2,6 +2,8 @@
 #include <QSet>
 #include <QRegularExpression>
 
+static auto regExprBlank = QRegularExpression{"\\s+"};
+
 // BSTR->QString
 QString bstrToQString(BSTR bstr)
 {
@@ -36,7 +38,7 @@ void ensureEmptyLine(QString &result)
         result += "\r\n\r\n";
 }
 
-void appendNodeText(IHTMLDOMNode *pNode, QString &result)
+void appendNodeText(IHTMLDOMNode *pNode, QString &result, bool inExtract = false)
 {
     if (!pNode) return;
 
@@ -90,7 +92,11 @@ void appendNodeText(IHTMLDOMNode *pNode, QString &result)
             if (!result.isEmpty() && !result.endsWith(" ") && !result.endsWith("\n"))
                 result += " ";
 
-            result += trimmed;
+            if (inExtract) {
+                result += QString{"\\hl{%1}"}.arg(trimmed);
+            } else {
+                result += trimmed;
+            }
         } else {
             VariantClear(&v);
         }
@@ -101,6 +107,7 @@ void appendNodeText(IHTMLDOMNode *pNode, QString &result)
     if (nodeType == 1) { // NODE_ELEMENT
         IHTMLElement *pElem = nullptr;
         QString tag;
+        QString className;
 
         if (SUCCEEDED(pNode->QueryInterface(IID_IHTMLElement, (void**)&pElem)) && pElem) {
             BSTR bTag = nullptr;
@@ -108,7 +115,18 @@ void appendNodeText(IHTMLDOMNode *pNode, QString &result)
                 tag = bstrToQString(bTag).toLower();
                 SysFreeString(bTag);
             }
+            BSTR bClass = nullptr;
+            if (SUCCEEDED(pElem->get_className(&bClass))&& bClass) {
+                className = bstrToQString(bClass).toLower();
+                SysFreeString(bClass);
+            }
             pElem->Release();
+        }
+
+        bool isExtractSpan = false;
+        if (tag == "span" && !className.isEmpty()) {
+            const auto parts = className.split(regExprBlank, Qt::SkipEmptyParts);
+            isExtractSpan = parts.contains("extract");
         }
 
         // <br>：行内换行
@@ -118,16 +136,10 @@ void appendNodeText(IHTMLDOMNode *pNode, QString &result)
         }
 
         bool isParagraph = (tag == "p");
-        bool isListItem  = (tag == "li");
 
-        // 段落/列表项开始前，确保有一个空行
-        if (isParagraph || isListItem) {
+        // 段落开始前，确保有一个空行
+        if (isParagraph) {
             ensureEmptyLine(result);
-        }
-
-        if (isListItem) {
-            // 简单的项目符号，按需要可删掉或换别的
-            result += "- ";
         }
 
         // 递归子节点
@@ -137,17 +149,11 @@ void appendNodeText(IHTMLDOMNode *pNode, QString &result)
                 IHTMLDOMNode *pNext = nullptr;
                 pChild->get_nextSibling(&pNext);
 
-                appendNodeText(pChild, result);
+                appendNodeText(pChild, result, inExtract || isExtractSpan);
 
                 pChild->Release();
                 pChild = pNext;
             }
-        }
-
-        if (isListItem) {
-            // 每个 li 末尾换行
-            if (!result.endsWith("\r\n"))
-                result += "\r\n";
         }
 
         return;
@@ -160,7 +166,7 @@ void appendNodeText(IHTMLDOMNode *pNode, QString &result)
             IHTMLDOMNode *pNext = nullptr;
             pChild->get_nextSibling(&pNext);
 
-            appendNodeText(pChild, result);
+            appendNodeText(pChild, result, inExtract);
 
             pChild->Release();
             pChild = pNext;

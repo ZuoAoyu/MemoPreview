@@ -59,6 +59,7 @@ void SettingsUtils::ensureInitialSettings()
         QString defaultTemplateContent =
             R"(\documentclass{article}
 \usepackage{amsmath,amssymb}
+\providecommand{\hl}[1]{\textbf{#1}}
 \begin{document}
 
 %CONTENT%
@@ -80,6 +81,7 @@ void SettingsUtils::ensureInitialSettings()
                 QString content =
                     R"(\documentclass{article}
 \usepackage{amsmath,amssymb}
+\providecommand{\hl}[1]{\textbf{#1}}
 \begin{document}
 
 Welcome to MemoPreview!
