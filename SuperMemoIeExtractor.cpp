@@ -100,10 +100,10 @@ void appendNodeText(IHTMLDOMNode *pNode, QString &result, HighlightMode highligh
 
             switch (highlightMode) {
             case HighlightMode::Extract:
-                result += QString{"\\hl{%1}"}.arg(trimmed);
+                result += QString{" \\hl{%1} "}.arg(trimmed);
                 break;
             case HighlightMode::Cloze:
-                result += QString{"\\hc{%1}"}.arg(trimmed);
+                result += QString{" \\hc{%1} "}.arg(trimmed);
                 break;
             default:
                 result += trimmed;
