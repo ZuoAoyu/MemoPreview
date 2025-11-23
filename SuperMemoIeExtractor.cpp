@@ -38,7 +38,13 @@ void ensureEmptyLine(QString &result)
         result += "\r\n\r\n";
 }
 
-void appendNodeText(IHTMLDOMNode *pNode, QString &result, bool inExtract = false)
+enum class HighlightMode{
+    None,
+    Extract,
+    Cloze,
+};
+
+void appendNodeText(IHTMLDOMNode *pNode, QString &result, HighlightMode highlightMode = HighlightMode::None)
 {
     if (!pNode) return;
 
@@ -88,15 +94,22 @@ void appendNodeText(IHTMLDOMNode *pNode, QString &result, bool inExtract = false
                 ensureEmptyLine(result);
             }
 
-            // 如果前面已经有内容且最后不是空格/换行，补一个空格（避免黏在一起）
-            if (!result.isEmpty() && !result.endsWith(" ") && !result.endsWith("\n"))
-                result += " ";
+            // // 如果前面已经有内容且最后不是空格/换行，补一个空格（避免黏在一起）
+            // if (!result.isEmpty() && !result.endsWith(" ") && !result.endsWith("\n"))
+            //     result += " ";
 
-            if (inExtract) {
+            switch (highlightMode) {
+            case HighlightMode::Extract:
                 result += QString{"\\hl{%1}"}.arg(trimmed);
-            } else {
+                break;
+            case HighlightMode::Cloze:
+                result += QString{"\\hc{%1}"}.arg(trimmed);
+                break;
+            default:
                 result += trimmed;
+                break;
             }
+
         } else {
             VariantClear(&v);
         }
@@ -124,9 +137,11 @@ void appendNodeText(IHTMLDOMNode *pNode, QString &result, bool inExtract = false
         }
 
         bool isExtractSpan = false;
+        bool isClozeSpan = false;
         if (tag == "span" && !className.isEmpty()) {
             const auto parts = className.split(regExprBlank, Qt::SkipEmptyParts);
             isExtractSpan = parts.contains("extract");
+            isClozeSpan = parts.contains("clozed");
         }
 
         // <br>：行内换行
@@ -149,7 +164,14 @@ void appendNodeText(IHTMLDOMNode *pNode, QString &result, bool inExtract = false
                 IHTMLDOMNode *pNext = nullptr;
                 pChild->get_nextSibling(&pNext);
 
-                appendNodeText(pChild, result, inExtract || isExtractSpan);
+                // appendNodeText(pChild, result, inExtract || isExtractSpan);
+                auto childHighlight = highlightMode;
+                if (isClozeSpan) {
+                    childHighlight = HighlightMode::Cloze;
+                } else if (isExtractSpan) {
+                    childHighlight = HighlightMode::Extract;
+                }
+                appendNodeText(pChild, result, childHighlight);
 
                 pChild->Release();
                 pChild = pNext;
@@ -166,7 +188,7 @@ void appendNodeText(IHTMLDOMNode *pNode, QString &result, bool inExtract = false
             IHTMLDOMNode *pNext = nullptr;
             pChild->get_nextSibling(&pNext);
 
-            appendNodeText(pChild, result, inExtract);
+            appendNodeText(pChild, result, highlightMode);
 
             pChild->Release();
             pChild = pNext;

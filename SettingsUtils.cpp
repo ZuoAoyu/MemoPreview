@@ -60,6 +60,7 @@ void SettingsUtils::ensureInitialSettings()
             R"(\documentclass{article}
 \usepackage{amsmath,amssymb}
 \providecommand{\hl}[1]{\textbf{#1}}
+\providecommand{\hc}[1]{\textbf{\textit{#1}}}
 \begin{document}
 
 %CONTENT%
@@ -82,6 +83,7 @@ void SettingsUtils::ensureInitialSettings()
                     R"(\documentclass{article}
 \usepackage{amsmath,amssymb}
 \providecommand{\hl}[1]{\textbf{#1}}
+\providecommand{\hc}[1]{\textbf{\textit{#1}}}
 \begin{document}
 
 Welcome to MemoPreview!
