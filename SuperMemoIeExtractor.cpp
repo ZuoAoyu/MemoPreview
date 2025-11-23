@@ -87,12 +87,12 @@ void appendNodeText(IHTMLDOMNode *pNode, QString &result, HighlightMode highligh
                 pParent->Release();
             }
 
-            bool parentIsBody = (parentTag == "body");
+            // bool parentIsBody = (parentTag == "body");
 
-            if (parentIsBody) {
-                // 裸文本直接在 body 下：把它当成自己的段落
-                ensureEmptyLine(result);
-            }
+            // if (parentIsBody) {
+            //     // 裸文本直接在 body 下：把它当成自己的段落
+            //     ensureEmptyLine(result);
+            // }
 
             // // 如果前面已经有内容且最后不是空格/换行，补一个空格（避免黏在一起）
             // if (!result.isEmpty() && !result.endsWith(" ") && !result.endsWith("\n"))
