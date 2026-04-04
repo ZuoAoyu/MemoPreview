@@ -1,6 +1,7 @@
 #include "LatexCompileService.h"
 
 #include <QDebug>
+#include <QtGlobal>
 
 LatexCompileService::LatexCompileService(QObject* parent)
     : QObject(parent), m_manager(this)
@@ -41,6 +42,17 @@ bool LatexCompileService::start(const QString& latexmkPath, const QString& works
     m_restartScheduled = false;
 
     m_manager.start(latexmkPath, workspaceDir, latexmkArgs);
+    if (!m_manager.isRunning()) {
+        setState(State::Stopped);
+        emit runningStateChanged(false);
+        increaseBackoff();
+        if (error) {
+            *error = "failed to launch latexmk process";
+        }
+        return false;
+    }
+
+    resetBackoff();
     setState(State::Running);
     emit runningStateChanged(true);
     return true;
@@ -50,6 +62,7 @@ void LatexCompileService::stop()
 {
     m_autoRestartEnabled = false;
     m_restartScheduled = false;
+    resetBackoff();
     m_manager.stop();
     setState(State::Stopped);
     emit runningStateChanged(false);
@@ -94,6 +107,17 @@ void LatexCompileService::scheduleRestart()
         QString error;
         if (!start(m_lastLatexmkPath, m_lastWorkspaceDir, m_lastLatexmkArgs, &error)) {
             qWarning() << "[LATEX_RESTART_FAILED]" << error;
+            scheduleRestart();
         }
     });
+}
+
+void LatexCompileService::resetBackoff()
+{
+    m_restartDelayMs = m_restartDelayMinMs;
+}
+
+void LatexCompileService::increaseBackoff()
+{
+    m_restartDelayMs = qMin(m_restartDelayMs * 2, m_restartDelayMaxMs);
 }

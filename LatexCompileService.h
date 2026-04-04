@@ -33,6 +33,8 @@ signals:
 private:
     void setState(State state);
     void scheduleRestart();
+    void resetBackoff();
+    void increaseBackoff();
 
 private:
     LatexmkManager m_manager;
@@ -40,6 +42,8 @@ private:
     bool m_autoRestartEnabled = false;
     bool m_restartScheduled = false;
     int m_restartDelayMs = 1000;
+    const int m_restartDelayMinMs = 1000;
+    const int m_restartDelayMaxMs = 10000;
 
     QString m_lastLatexmkPath;
     QString m_lastWorkspaceDir;

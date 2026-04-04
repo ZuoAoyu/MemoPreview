@@ -290,8 +290,8 @@ void MainWindow::refreshIeControls()
 
     // 开线程抓取，否则大窗口可能会卡
     m_extractionPool.start([guardThis, extractionTargetHwnd]() {
-        if (!guardThis) return;
-        const SuperMemoExtractionSnapshot snapshot = guardThis->m_superMemoGateway.extractControls(extractionTargetHwnd);
+        SuperMemoGateway gateway;
+        const SuperMemoExtractionSnapshot snapshot = gateway.extractControls(extractionTargetHwnd);
         auto allCtrls = snapshot.controls;
         const QString allHash = snapshot.contentHash;
 
