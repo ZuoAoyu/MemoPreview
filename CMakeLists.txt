@@ -31,6 +31,8 @@ set(PROJECT_SOURCES
         TemplateEditDialog.h TemplateEditDialog.cpp
         TemplateService.h TemplateService.cpp
         PreviewSyncService.h PreviewSyncService.cpp
+        WriteDebouncePolicy.h WriteDebouncePolicy.cpp
+        RetryBackoffPolicy.h RetryBackoffPolicy.cpp
         SuperMemoGateway.h SuperMemoGateway.cpp
         LatexCompileService.h LatexCompileService.cpp
         LatexmkManager.h LatexmkManager.cpp
@@ -91,4 +93,18 @@ install(TARGETS MemoPreview
 
 if(QT_VERSION_MAJOR EQUAL 6)
     qt_finalize_executable(MemoPreview)
+endif()
+
+option(MEMOPREVIEW_BUILD_TESTS "Build MemoPreview tests" ON)
+if(MEMOPREVIEW_BUILD_TESTS)
+    enable_testing()
+    add_executable(MemoPreviewTests
+        tests/MemoPreviewTests.cpp
+        PreviewSyncService.cpp
+        WriteDebouncePolicy.cpp
+        RetryBackoffPolicy.cpp
+    )
+    target_link_libraries(MemoPreviewTests PRIVATE Qt${QT_VERSION_MAJOR}::Core)
+    target_include_directories(MemoPreviewTests PRIVATE "${CMAKE_SOURCE_DIR}")
+    add_test(NAME MemoPreviewTests COMMAND MemoPreviewTests)
 endif()

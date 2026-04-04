@@ -14,6 +14,7 @@
 #include "SettingsDialog.h"
 #include "Config.h"
 #include "SettingsUtils.h"
+#include "WriteDebouncePolicy.h"
 
 namespace {
 constexpr int CONTENT_WRITE_DEBOUNCE_MS = 700;
@@ -333,13 +334,14 @@ void MainWindow::refreshIeControls()
 
 void MainWindow::scheduleLatexUpdateOnContentChanged()
 {
-    const bool firstChangeInBurst = !debounceTimer->isActive();
-    const bool canWriteImmediately = !lastLatexWriteClock.isValid()
-        || lastLatexWriteClock.elapsed() >= MIN_IMMEDIATE_WRITE_GAP_MS;
-
     // 第一次变化优先立即写，保证切卡后预览尽快更新；
     // 连续变化交给防抖定时器做一次尾部写入。
-    if (firstChangeInBurst && canWriteImmediately) {
+    const bool shouldWriteNow = WriteDebouncePolicy::shouldWriteImmediately(
+        debounceTimer->isActive(),
+        lastLatexWriteClock.isValid(),
+        lastLatexWriteClock.isValid() ? lastLatexWriteClock.elapsed() : 0,
+        MIN_IMMEDIATE_WRITE_GAP_MS);
+    if (shouldWriteNow) {
         updateLatexSourceIfNeeded();
     }
 
