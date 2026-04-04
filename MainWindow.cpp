@@ -6,9 +6,9 @@
 #include <QStatusBar>
 #include <QDebug>
 #include <QShortcut>
-#include <QtConcurrent>
 #include <QDesktopServices>
 #include <QMessageBox>
+#include <QThreadPool>
 #include "SettingsDialog.h"
 #include "SuperMemoWindowUtils.h"
 #include "Config.h"
@@ -285,7 +285,7 @@ void MainWindow::refreshIeControls()
     isExtracting = true;
 
     // 开线程抓取，否则大窗口可能会卡
-    QtConcurrent::run([this](){
+    QThreadPool::globalInstance()->start([this]() {
         SuperMemoIeExtractor extractor(currentSuperMemoHwnd);
         auto allCtrls = extractor.extractAllIeControls();
 
