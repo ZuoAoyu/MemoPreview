@@ -14,6 +14,11 @@
 #include "Config.h"
 #include "SettingsUtils.h"
 
+namespace {
+constexpr int CONTENT_WRITE_DEBOUNCE_MS = 700;
+constexpr int MIN_IMMEDIATE_WRITE_GAP_MS = 250;
+}
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
@@ -83,7 +88,7 @@ MainWindow::MainWindow(QWidget *parent)
     // 防止连续高频写入 main.tex 文件，只在内容稳定后再保存。
     debounceTimer = new QTimer(this);
     debounceTimer->setSingleShot(true);
-    debounceTimer->setInterval(1000); // 1000ms防抖，内容连续变化时最后一次刷新
+    debounceTimer->setInterval(CONTENT_WRITE_DEBOUNCE_MS);
     connect(debounceTimer, &QTimer::timeout, this, &MainWindow::updateLatexSourceIfNeeded);
 
     connect(superWindowSelector, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int idx){
@@ -91,6 +96,7 @@ MainWindow::MainWindow(QWidget *parent)
         currentSuperMemoHwnd = (HWND)m_superMemoWindows[idx].hwnd;
         ieTabWidget->clear();
         lastAllContentHash.clear();
+        debounceTimer->stop();
         // 立即刷新
         refreshIeControls();
     });
@@ -292,16 +298,17 @@ void MainWindow::refreshIeControls()
         // 组装内容hash
         QStringList contentList;
         contentList.reserve(allCtrls.size());
-        for (auto &ctrl : allCtrls) {
+        for (const auto &ctrl : allCtrls) {
             contentList << ctrl.content;
         }
 
-        QString allHash = contentList.join("");
-
-        // 在返回前重置提取标志
+        const QString allHash = contentList.join("");
         QMetaObject::invokeMethod(this, [this]() {
             isExtracting = false;
         });
+
+        // 在返回前重置提取标志
+        
 
         if (allHash == lastAllContentHash)
             return; // 内容未变，跳过
@@ -329,9 +336,24 @@ void MainWindow::refreshIeControls()
                 ieTabWidget->addTab(textEdit, tabLabel);
             }
 
-            debounceTimer->start();
+            scheduleLatexUpdateOnContentChanged();
         });
     });
+}
+
+void MainWindow::scheduleLatexUpdateOnContentChanged()
+{
+    const bool firstChangeInBurst = !debounceTimer->isActive();
+    const bool canWriteImmediately = !lastLatexWriteClock.isValid()
+        || lastLatexWriteClock.elapsed() >= MIN_IMMEDIATE_WRITE_GAP_MS;
+
+    // 第一次变化优先立即写，保证切卡后预览尽快更新；
+    // 连续变化交给防抖定时器做一次尾部写入。
+    if (firstChangeInBurst && canWriteImmediately) {
+        updateLatexSourceIfNeeded();
+    }
+
+    debounceTimer->start();
 }
 
 void MainWindow::updateLatexSourceIfNeeded()
@@ -362,10 +384,16 @@ void MainWindow::updateLatexSourceIfNeeded()
     QString latexContent = templateText;
     latexContent.replace("%CONTENT%", memoContent);
 
+    if (latexContent == lastWrittenLatexContent) {
+        return;
+    }
+
     QFile file(texFile);
     if (file.open(QIODevice::WriteOnly)) {
         file.write(latexContent.toUtf8());
         file.close();
+        lastWrittenLatexContent = latexContent;
+        lastLatexWriteClock.start();
     }
 }
 

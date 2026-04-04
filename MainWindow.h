@@ -6,6 +6,7 @@
 #include <QComboBox>
 #include <QTabWidget>
 #include <QTimer>
+#include <QElapsedTimer>
 #include "LatexmkManager.h"
 #include "LogDialog.h"
 #include "SuperMemoWindowInfo.h"
@@ -30,6 +31,7 @@ private:
     void refreshSuperMemoWindowList();
     void refreshIeControls();
     void updateLatexSourceIfNeeded();
+    void scheduleLatexUpdateOnContentChanged();
 
     void updateSuperMemoStatus(const QString& status, bool good = true);
 
@@ -59,6 +61,8 @@ private:
     // 防抖定时器
     QTimer* debounceTimer = nullptr;
     QString lastAllContentHash;
+    QElapsedTimer lastLatexWriteClock;
+    QString lastWrittenLatexContent;
 
     // 提取状态标志，防止重叠执行
     bool isExtracting = false;
