@@ -1,8 +1,19 @@
-#include "SuperMemoIeExtractor.h"
+﻿#include "SuperMemoIeExtractor.h"
 #include <QSet>
 #include <QRegularExpression>
+namespace {
+constexpr UINT HTML_GETOBJECT_TIMEOUT_MS = 250;
 
-static auto regExprBlank = QRegularExpression{"\\s+"};
+QString normalizeParagraphBreaks(const QString &text)
+{
+    QString normalized = text;
+    normalized.replace("\r\n", "\n");
+    normalized.replace('\r', '\n');
+    normalized.replace(QRegularExpression{"(?<!\\n)\\n(?!\\n)"}, "\n\n");
+    normalized.replace("\n", "\r\n");
+    return normalized;
+}
+}
 
 // BSTR->QString
 QString bstrToQString(BSTR bstr)
@@ -60,43 +71,9 @@ void appendNodeText(IHTMLDOMNode *pNode, QString &result, HighlightMode highligh
             QString text = bstrToQString(v.bstrVal);
             VariantClear(&v);
 
-            // 原始源码里的换行在 HTML 渲染里多半只是空白，这里压成空格
-            text.replace("\r", " ");
-            text.replace("\n", " ");
-
-            // 合并多余空白
-            text = text.replace(QRegularExpression{"\\s+"}, " ");
-
-            QString trimmed = text.trimmed();
+            QString trimmed = text.simplified();
             if (trimmed.isEmpty())
                 return;
-
-            // 看看父节点是不是 <body>，如果是，就把这段文本当成一个“段落”
-            QString parentTag;
-            IHTMLDOMNode *pParent = nullptr;
-            if (SUCCEEDED(pNode->get_parentNode(&pParent)) && pParent) {
-                IHTMLElement *pParentElem = nullptr;
-                if (SUCCEEDED(pParent->QueryInterface(IID_IHTMLElement, (void**)&pParentElem)) && pParentElem) {
-                    BSTR bTag = nullptr;
-                    if (SUCCEEDED(pParentElem->get_tagName(&bTag)) && bTag) {
-                        parentTag = bstrToQString(bTag).toLower();
-                        SysFreeString(bTag);
-                    }
-                    pParentElem->Release();
-                }
-                pParent->Release();
-            }
-
-            // bool parentIsBody = (parentTag == "body");
-
-            // if (parentIsBody) {
-            //     // 裸文本直接在 body 下：把它当成自己的段落
-            //     ensureEmptyLine(result);
-            // }
-
-            // // 如果前面已经有内容且最后不是空格/换行，补一个空格（避免黏在一起）
-            // if (!result.isEmpty() && !result.endsWith(" ") && !result.endsWith("\n"))
-            //     result += " ";
 
             switch (highlightMode) {
             case HighlightMode::Extract:
@@ -139,9 +116,8 @@ void appendNodeText(IHTMLDOMNode *pNode, QString &result, HighlightMode highligh
         bool isExtractSpan = false;
         bool isClozeSpan = false;
         if (tag == "span" && !className.isEmpty()) {
-            const auto parts = className.split(regExprBlank, Qt::SkipEmptyParts);
-            isExtractSpan = parts.contains("extract");
-            isClozeSpan = parts.contains("clozed");
+            isExtractSpan = className.contains("extract");
+            isClozeSpan = className.contains("clozed");
         }
 
         // <br>：行内换行
@@ -280,9 +256,9 @@ QString SuperMemoIeExtractor::getDocumentContent(HWND hwnd, QString &title, QStr
 
     UINT nMsg = RegisterWindowMessageA("WM_HTML_GETOBJECT");
     DWORD_PTR dwRes = 0;
-    LRESULT lRes = SendMessageTimeout(hwnd, nMsg, 0, 0, SMTO_ABORTIFHUNG, 1000, &dwRes);
+    LRESULT lRes = SendMessageTimeout(hwnd, nMsg, 0, 0, SMTO_ABORTIFHUNG, HTML_GETOBJECT_TIMEOUT_MS, &dwRes);
 
-    if (dwRes == 0) return {};
+    if (lRes == 0 || dwRes == 0) return {};
 
     IHTMLDocument2 *pDoc = nullptr;
     HRESULT hr = ObjectFromLresult(dwRes, IID_IHTMLDocument2, 0, (void **)&pDoc);
@@ -305,10 +281,34 @@ QString SuperMemoIeExtractor::getDocumentContent(HWND hwnd, QString &title, QStr
     // 内容：DOM 遍历
     IHTMLElement *pBody = nullptr;
     if (SUCCEEDED(pDoc->get_body(&pBody)) && pBody) {
-        IHTMLDOMNode *pBodyNode = nullptr;
-        if (SUCCEEDED(pBody->QueryInterface(IID_IHTMLDOMNode, (void**)&pBodyNode)) && pBodyNode) {
-            appendNodeText(pBodyNode, result);
-            pBodyNode->Release();
+        QString bodyHtml;
+        BSTR bstrHtml = nullptr;
+        if (SUCCEEDED(pBody->get_innerHTML(&bstrHtml)) && bstrHtml) {
+            bodyHtml = bstrToQString(bstrHtml);
+            SysFreeString(bstrHtml);
+        }
+
+        // 快路径：无 extract/clozed 标记时，直接 innerText，避免高成本 DOM 递归
+        const bool needsHighlightAwareExtraction =
+            bodyHtml.contains("extract", Qt::CaseInsensitive) ||
+            bodyHtml.contains("clozed", Qt::CaseInsensitive);
+        if (!needsHighlightAwareExtraction) {
+            BSTR bstrText = nullptr;
+            if (SUCCEEDED(pBody->get_innerText(&bstrText)) && bstrText) {
+                result = bstrToQString(bstrText);
+                SysFreeString(bstrText);
+                if (bodyHtml.contains("<p", Qt::CaseInsensitive)) {
+                    result = normalizeParagraphBreaks(result);
+                }
+            }
+        }
+
+        if (result.isEmpty() && needsHighlightAwareExtraction) {
+            IHTMLDOMNode *pBodyNode = nullptr;
+            if (SUCCEEDED(pBody->QueryInterface(IID_IHTMLDOMNode, (void**)&pBodyNode)) && pBodyNode) {
+                appendNodeText(pBodyNode, result);
+                pBodyNode->Release();
+            }
         }
 
         // 兜底逻辑：如果 result 还是空，就用 innerText
@@ -346,4 +346,6 @@ QString SuperMemoIeExtractor::getDocumentContent(HWND hwnd, QString &title, QStr
     pDoc->Release();
     return result;
 }
+
+
 

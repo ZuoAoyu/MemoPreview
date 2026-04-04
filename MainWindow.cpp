@@ -17,6 +17,8 @@
 namespace {
 constexpr int CONTENT_WRITE_DEBOUNCE_MS = 700;
 constexpr int MIN_IMMEDIATE_WRITE_GAP_MS = 250;
+constexpr int IE_REFRESH_ACTIVE_INTERVAL_MS = 250;
+constexpr int IE_REFRESH_INACTIVE_INTERVAL_MS = 800;
 }
 
 MainWindow::MainWindow(QWidget *parent)
@@ -82,7 +84,7 @@ MainWindow::MainWindow(QWidget *parent)
     // 刷新定时器，防抖，每0.5s定时拉取
     // 定时轮询 SuperMemo 窗口内容，看看 IE 控件内容有没有变化
     ieRefreshTimer = new QTimer(this);
-    ieRefreshTimer->setInterval(500); // 0.5秒拉取一次
+    ieRefreshTimer->setInterval(IE_REFRESH_ACTIVE_INTERVAL_MS);
     connect(ieRefreshTimer, &QTimer::timeout, this, &MainWindow::refreshIeControls);
 
     // 防止连续高频写入 main.tex 文件，只在内容稳定后再保存。
@@ -272,20 +274,22 @@ void MainWindow::refreshIeControls()
     // 如果上次提取还在进行中，跳过本次
     if (isExtracting) return;
 
-    // 检测SuperMemo窗口是否是前台窗口
+    // 检测SuperMemo所属进程是否位于前台（比窗口句柄相等更稳）
     HWND foregroundWindow = GetForegroundWindow();
-    bool isSuperMemoActive = (foregroundWindow == currentSuperMemoHwnd);
+    DWORD foregroundPid = 0;
+    DWORD superMemoPid = 0;
+    if (foregroundWindow) {
+        GetWindowThreadProcessId(foregroundWindow, &foregroundPid);
+    }
+    GetWindowThreadProcessId(currentSuperMemoHwnd, &superMemoPid);
+    const bool isSuperMemoActive = (foregroundPid != 0 && foregroundPid == superMemoPid);
 
-    // 如果SuperMemo不是活动窗口，降低轮询频率
-    // 每4次轮询（2秒）才真正执行一次提取
-    if (!isSuperMemoActive) {
-        pollCounter++;
-        if (pollCounter < 4) {
-            return; // 跳过本次提取
-        }
-        pollCounter = 0; // 重置计数器
-    } else {
-        pollCounter = 0; // SuperMemo活跃时，每次都提取
+    // 前台时高频更新，后台时仍保持亚秒级刷新，避免“几秒后才更新”
+    const int targetInterval = isSuperMemoActive
+        ? IE_REFRESH_ACTIVE_INTERVAL_MS
+        : IE_REFRESH_INACTIVE_INTERVAL_MS;
+    if (ieRefreshTimer && ieRefreshTimer->interval() != targetInterval) {
+        ieRefreshTimer->setInterval(targetInterval);
     }
 
     isExtracting = true;
