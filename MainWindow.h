@@ -8,11 +8,11 @@
 #include <QTimer>
 #include <QElapsedTimer>
 #include <QThreadPool>
-#include "LatexmkManager.h"
+#include "LatexCompileService.h"
 #include "LogDialog.h"
 #include "PreviewSyncService.h"
+#include "SuperMemoGateway.h"
 #include "SuperMemoWindowInfo.h"
-#include "SuperMemoIeExtractor.h"
 #include "TemplateService.h"
 
 class MainWindow : public QMainWindow
@@ -48,7 +48,7 @@ private:
     QAction* startAction = nullptr;
     QAction* stopAction = nullptr;
 
-    LatexmkManager* m_latexmkMgr = nullptr;
+    LatexCompileService* m_compileService = nullptr;
     QLabel* statusLabel = nullptr;
     QLabel* compileStatusLabel = nullptr;
 
@@ -73,6 +73,7 @@ private:
     QThreadPool m_extractionPool;
     TemplateService m_templateService;
     PreviewSyncService m_previewSyncService;
+    SuperMemoGateway m_superMemoGateway;
 
     QComboBox* latexTemplateSelector = nullptr;
     QMap<QString, QString> templateContentMap; // 模板标题->内容

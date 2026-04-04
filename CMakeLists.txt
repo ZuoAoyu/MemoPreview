@@ -31,6 +31,8 @@ set(PROJECT_SOURCES
         TemplateEditDialog.h TemplateEditDialog.cpp
         TemplateService.h TemplateService.cpp
         PreviewSyncService.h PreviewSyncService.cpp
+        SuperMemoGateway.h SuperMemoGateway.cpp
+        LatexCompileService.h LatexCompileService.cpp
         LatexmkManager.h LatexmkManager.cpp
         LogDialog.h LogDialog.cpp
 )

@@ -12,7 +12,6 @@
 #include <QPointer>
 #include <QTextEdit>
 #include "SettingsDialog.h"
-#include "SuperMemoWindowUtils.h"
 #include "Config.h"
 #include "SettingsUtils.h"
 
@@ -43,28 +42,25 @@ MainWindow::MainWindow(QWidget *parent)
     // resize(480, 320);
     resize(sizeHint());
 
-    m_latexmkMgr = new LatexmkManager(this);
+    m_compileService = new LatexCompileService(this);
     m_extractionPool.setMaxThreadCount(1);
     m_extractionPool.setExpiryTimeout(-1);
 
-    // 连接latexmk manager信号
-    connect(m_latexmkMgr, &LatexmkManager::compileStatusChanged, compileStatusLabel, &QLabel::setText);
-    connect(m_latexmkMgr, &LatexmkManager::logUpdated, this, [this](const QString& log){
+    // 连接编译服务信号
+    connect(m_compileService, &LatexCompileService::compileStatusChanged, compileStatusLabel, &QLabel::setText);
+    connect(m_compileService, &LatexCompileService::logUpdated, this, [this](const QString& log){
         // 日志窗口逻辑，可弹窗或追加到文本区域
     });
-    connect(m_latexmkMgr, &LatexmkManager::processCrashed, this, [this](){
-        m_latexmkMgr->restart();
-    });
-    connect(m_latexmkMgr, &LatexmkManager::processStopped, this, [this](){
-        startAction->setEnabled(true);
-        stopAction->setEnabled(false);
+    connect(m_compileService, &LatexCompileService::runningStateChanged, this, [this](bool running){
+        startAction->setEnabled(!running);
+        stopAction->setEnabled(running);
     });
 
     // 日志弹窗
     logDialog = new LogDialog(this);
 
     // 日志信号连接
-    connect(m_latexmkMgr, &LatexmkManager::logUpdated, this, [this](const QString& log){
+    connect(m_compileService, &LatexCompileService::logUpdated, this, [this](const QString& log){
         logDialog->appendLog(log);
     });
 
@@ -126,8 +122,8 @@ MainWindow::~MainWindow() {
     if (debounceTimer) debounceTimer->stop();
     m_extractionPool.waitForDone();
 
-    delete m_latexmkMgr;
-    m_latexmkMgr = nullptr;
+    delete m_compileService;
+    m_compileService = nullptr;
 }
 
 void MainWindow::onStartLatexmk()
@@ -149,16 +145,15 @@ void MainWindow::onStartLatexmk()
         return;
     }
 
-    m_latexmkMgr->start(latexmkPath, workspacePath, latexmkArgs);
-    startAction->setEnabled(false);
-    stopAction->setEnabled(true);
+    QString error;
+    if (!m_compileService->start(latexmkPath, workspacePath, latexmkArgs, &error)) {
+        statusBar()->showMessage("启动编译失败: " + error, 3000);
+    }
 }
 
 void MainWindow::onStopLatexmk()
 {
-    m_latexmkMgr->stop();
-    startAction->setEnabled(true);
-    stopAction->setEnabled(false);
+    m_compileService->stop();
 }
 
 void MainWindow::openWorkspace()
@@ -249,7 +244,7 @@ void MainWindow::createStatusBar()
 
 void MainWindow::refreshSuperMemoWindowList()
 {
-    m_superMemoWindows = SuperMemoWindowUtils::enumerateAllSuperMemoWindows();
+    m_superMemoWindows = m_superMemoGateway.enumerateWindows();
     qInfo() << "[SM_WIN_SCAN] found windows:" << m_superMemoWindows.size();
     superWindowSelector->clear();
     for (const auto& info : m_superMemoWindows) {
@@ -279,14 +274,7 @@ void MainWindow::refreshIeControls()
     if (isExtracting) return;
 
     // 检测SuperMemo所属进程是否位于前台（比窗口句柄相等更稳）
-    HWND foregroundWindow = GetForegroundWindow();
-    DWORD foregroundPid = 0;
-    DWORD superMemoPid = 0;
-    if (foregroundWindow) {
-        GetWindowThreadProcessId(foregroundWindow, &foregroundPid);
-    }
-    GetWindowThreadProcessId(currentSuperMemoHwnd, &superMemoPid);
-    const bool isSuperMemoActive = (foregroundPid != 0 && foregroundPid == superMemoPid);
+    const bool isSuperMemoActive = m_superMemoGateway.isForegroundProcess(currentSuperMemoHwnd);
 
     // 前台时高频更新，后台时仍保持亚秒级刷新，避免“几秒后才更新”
     const int targetInterval = isSuperMemoActive
@@ -302,15 +290,10 @@ void MainWindow::refreshIeControls()
 
     // 开线程抓取，否则大窗口可能会卡
     m_extractionPool.start([guardThis, extractionTargetHwnd]() {
-        SuperMemoIeExtractor extractor(extractionTargetHwnd);
-        auto allCtrls = extractor.extractAllIeControls();
-
-        QStringList contentList;
-        contentList.reserve(allCtrls.size());
-        for (const auto &ctrl : allCtrls) {
-            contentList << ctrl.content;
-        }
-        const QString allHash = contentList.join("");
+        if (!guardThis) return;
+        const SuperMemoExtractionSnapshot snapshot = guardThis->m_superMemoGateway.extractControls(extractionTargetHwnd);
+        auto allCtrls = snapshot.controls;
+        const QString allHash = snapshot.contentHash;
 
         if (!guardThis) return;
         QMetaObject::invokeMethod(guardThis.data(), [guardThis, allCtrls = std::move(allCtrls), allHash, extractionTargetHwnd]() mutable {
