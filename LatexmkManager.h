@@ -50,6 +50,7 @@ private:
     QString m_latexmkArgs;
     // latexmk进程的崩溃是否是由用户主动停止的。主动 stop 时不重启，只有真正崩溃才重启。
     bool m_userStopping = false;
+    bool m_crashSignalEmitted = false;
 
     QByteArray m_logBuffer;
 

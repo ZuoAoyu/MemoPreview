@@ -1,4 +1,4 @@
-#include "MainWindow.h"
+﻿#include "MainWindow.h"
 #include <QToolBar>
 #include <QLabel>
 #include <QSettings>
@@ -9,6 +9,8 @@
 #include <QDesktopServices>
 #include <QMessageBox>
 #include <QThreadPool>
+#include <QPointer>
+#include <QTextEdit>
 #include "SettingsDialog.h"
 #include "SuperMemoWindowUtils.h"
 #include "Config.h"
@@ -42,6 +44,8 @@ MainWindow::MainWindow(QWidget *parent)
     resize(sizeHint());
 
     m_latexmkMgr = new LatexmkManager(this);
+    m_extractionPool.setMaxThreadCount(1);
+    m_extractionPool.setExpiryTimeout(-1);
 
     // 连接latexmk manager信号
     connect(m_latexmkMgr, &LatexmkManager::compileStatusChanged, compileStatusLabel, &QLabel::setText);
@@ -120,8 +124,10 @@ MainWindow::MainWindow(QWidget *parent)
 }
 
 MainWindow::~MainWindow() {
+    m_isShuttingDown = true;
     if (ieRefreshTimer) ieRefreshTimer->stop();
     if (debounceTimer) debounceTimer->stop();
+    m_extractionPool.waitForDone();
 
     delete m_latexmkMgr;
     m_latexmkMgr = nullptr;
@@ -247,6 +253,7 @@ void MainWindow::createStatusBar()
 void MainWindow::refreshSuperMemoWindowList()
 {
     m_superMemoWindows = SuperMemoWindowUtils::enumerateAllSuperMemoWindows();
+    qInfo() << "[SM_WIN_SCAN] found windows:" << m_superMemoWindows.size();
     superWindowSelector->clear();
     for (const auto& info : m_superMemoWindows) {
         QString label = QString("[%1] PID:%2")
@@ -269,7 +276,7 @@ void MainWindow::refreshSuperMemoWindowList()
 
 void MainWindow::refreshIeControls()
 {
-    if (!currentSuperMemoHwnd) return;
+    if (!currentSuperMemoHwnd || m_isShuttingDown) return;
 
     // 如果上次提取还在进行中，跳过本次
     if (isExtracting) return;
@@ -293,41 +300,40 @@ void MainWindow::refreshIeControls()
     }
 
     isExtracting = true;
+    const HWND extractionTargetHwnd = currentSuperMemoHwnd;
+    QPointer<MainWindow> guardThis(this);
 
     // 开线程抓取，否则大窗口可能会卡
-    QThreadPool::globalInstance()->start([this]() {
-        SuperMemoIeExtractor extractor(currentSuperMemoHwnd);
+    m_extractionPool.start([guardThis, extractionTargetHwnd]() {
+        SuperMemoIeExtractor extractor(extractionTargetHwnd);
         auto allCtrls = extractor.extractAllIeControls();
 
-        // 组装内容hash
         QStringList contentList;
         contentList.reserve(allCtrls.size());
         for (const auto &ctrl : allCtrls) {
             contentList << ctrl.content;
         }
-
         const QString allHash = contentList.join("");
-        QMetaObject::invokeMethod(this, [this]() {
-            isExtracting = false;
-        });
 
-        // 在返回前重置提取标志
-        
+        if (!guardThis) return;
+        QMetaObject::invokeMethod(guardThis.data(), [guardThis, allCtrls = std::move(allCtrls), allHash, extractionTargetHwnd]() mutable {
+            if (!guardThis) return;
+            auto* self = guardThis.data();
+            self->isExtracting = false;
 
-        if (allHash == lastAllContentHash)
-            return; // 内容未变，跳过
+            if (self->m_isShuttingDown) return;
+            if (self->currentSuperMemoHwnd != extractionTargetHwnd) return;
+            if (allHash == self->lastAllContentHash) return;
 
-        lastAllContentHash = allHash;
-        currentIeControls = allCtrls;
+            self->lastAllContentHash = allHash;
+            self->currentIeControls = allCtrls;
 
-        // 更新UI（回到主线程）
-        QMetaObject::invokeMethod(this, [this, allCtrls]() {
-            ieTabWidget->clear();
+            self->ieTabWidget->clear();
             if (allCtrls.empty()) {
                 auto* info = new QTextEdit;
                 info->setReadOnly(true);
                 info->setPlainText("未检测到任何 Internet Explorer_Server 控件！");
-                ieTabWidget->addTab(info, "无控件");
+                self->ieTabWidget->addTab(info, "无控件");
                 return;
             }
             // 以相反的顺序遍历控件，这样才和 SuperMemo 窗口中控件的顺序一致
@@ -337,11 +343,11 @@ void MainWindow::refreshIeControls()
                 textEdit->setReadOnly(true);
                 textEdit->setPlainText(ctrl.content);
                 QString tabLabel = QString("控件%1 %2").arg(allCtrls.size() - i).arg(ctrl.htmlTitle);
-                ieTabWidget->addTab(textEdit, tabLabel);
+                self->ieTabWidget->addTab(textEdit, tabLabel);
             }
 
-            scheduleLatexUpdateOnContentChanged();
-        });
+            self->scheduleLatexUpdateOnContentChanged();
+        }, Qt::QueuedConnection);
     });
 }
 
@@ -398,6 +404,8 @@ void MainWindow::updateLatexSourceIfNeeded()
         file.close();
         lastWrittenLatexContent = latexContent;
         lastLatexWriteClock.start();
+    } else {
+        qWarning() << "[WRITE_MAIN_TEX_FAILED] file=" << texFile << "error=" << file.errorString();
     }
 }
 

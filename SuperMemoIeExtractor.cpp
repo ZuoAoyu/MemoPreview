@@ -1,6 +1,7 @@
 ﻿#include "SuperMemoIeExtractor.h"
 #include <QSet>
 #include <QRegularExpression>
+#include <QDebug>
 namespace {
 constexpr UINT HTML_GETOBJECT_TIMEOUT_MS = 250;
 
@@ -192,14 +193,22 @@ std::vector<IeControlContent> SuperMemoIeExtractor::extractAllIeControls()
 
     // 保证COM初始化只在本线程一次
     HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    bool comInit = SUCCEEDED(hr);
+    const bool comInit = SUCCEEDED(hr);
+    if (hr == RPC_E_CHANGED_MODE) {
+        qWarning() << "[SM_COM_APARTMENT_MISMATCH] Reusing existing COM apartment mode in worker thread.";
+    } else if (FAILED(hr)) {
+        qWarning() << "[SM_COM_INIT_FAILED] hr=0x" << Qt::hex << static_cast<unsigned long>(hr) << Qt::dec;
+        return ret;
+    }
 
     for (HWND hwnd : hIeCtrls) {
         IeControlContent info;
         if (extractControlContent(hwnd, info))
             ret.push_back(info);
     }
-    if (comInit) CoUninitialize();
+    if (comInit) {
+        CoUninitialize();
+    }
     return ret;
 }
 

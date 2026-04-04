@@ -1,4 +1,4 @@
-#include "LatexmkManager.h"
+﻿#include "LatexmkManager.h"
 #include <QFileInfo>
 #include <QDir>
 #include <QDebug>
@@ -22,7 +22,8 @@ LatexmkManager::~LatexmkManager()
 void LatexmkManager::start(const QString &latexmkPath, const QString &workspaceDir, const QString &latexmkArgs)
 {
     stop();
-    m_userStopping = false; // 重置标志
+    m_userStopping = false; // reset
+    m_crashSignalEmitted = false;
 
     m_workspaceDir = workspaceDir;
     m_latexmkPath = latexmkPath;
@@ -30,6 +31,7 @@ void LatexmkManager::start(const QString &latexmkPath, const QString &workspaceD
 
     emitStatus("编译中");
     m_logBuffer.clear();
+    qInfo() << "[LATEX_START_REQUEST] path=" << latexmkPath << "workspace=" << workspaceDir;
 
     startLatexmk();
 }
@@ -37,11 +39,13 @@ void LatexmkManager::start(const QString &latexmkPath, const QString &workspaceD
 void LatexmkManager::stop()
 {
     m_userStopping = true;
+    m_crashSignalEmitted = false;
     if (m_process->state() == QProcess::NotRunning) {
         return;
     }
 
     emit logUpdated("停止 latexmk 编译...");
+    qInfo() << "[LATEX_STOP_REQUEST] pid=" << m_process->processId();
     // m_process->kill();
 
 #ifdef Q_OS_WIN
@@ -52,9 +56,10 @@ void LatexmkManager::stop()
 
 void LatexmkManager::restart()
 {
-    m_userStopping = false; // 重启视为不是用户主动 stop
     stop();
     QTimer::singleShot(1000, [this]() {
+        m_userStopping = false;
+        m_crashSignalEmitted = false;
         emit logUpdated("latexmk崩溃，自动重启...");
         startLatexmk();
     });
@@ -77,29 +82,37 @@ void LatexmkManager::clearLog()
 
 void LatexmkManager::handleProcessStarted()
 {
+    m_crashSignalEmitted = false;
     emitStatus("编译中");
 }
 
 void LatexmkManager::handleProcessError(QProcess::ProcessError error)
 {
-    Q_UNUSED(error)
     emitStatus("latexmk进程错误");
+    qWarning() << "[LATEX_PROCESS_ERROR] code=" << static_cast<int>(error) << "userStopping=" << m_userStopping;
 
     // 只有不是用户主动 stop 时才自动重启
-    if (!m_userStopping) {
+    if (!m_userStopping && !m_crashSignalEmitted) {
+        m_crashSignalEmitted = true;
         emit logUpdated("latexmk 进程出错，准备重启...");
         emit processCrashed();
-        // 自动重启由主窗口处理
     }
 }
 
 void LatexmkManager::handleProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
 {
+    qInfo() << "[LATEX_PROCESS_FINISHED] exitCode=" << exitCode
+            << "exitStatus=" << static_cast<int>(exitStatus)
+            << "userStopping=" << m_userStopping;
+
     if (exitStatus == QProcess::CrashExit && !m_userStopping) {
         // 只有非用户主动停止时才认为是崩溃
         emitStatus("latexmk崩溃");
         emit logUpdated("latexmk崩溃，准备重启...");
-        emit processCrashed();
+        if (!m_crashSignalEmitted) {
+            m_crashSignalEmitted = true;
+            emit processCrashed();
+        }
     } else if (exitStatus == QProcess::CrashExit && m_userStopping) {
         // 用户主动停止时的"崩溃"是正常的
         emitStatus("latexmk已停止");
@@ -115,6 +128,9 @@ void LatexmkManager::handleProcessFinished(int exitCode, QProcess::ExitStatus ex
 
     // 重置停止标志
     m_userStopping = false;
+    if (exitStatus != QProcess::CrashExit) {
+        m_crashSignalEmitted = false;
+    }
 }
 
 void LatexmkManager::handleReadyReadStandardOutput()
@@ -169,6 +185,8 @@ void LatexmkManager::startLatexmk()
     if (!m_process->waitForStarted(3000)) {
         emitStatus("启动latexmk失败");
         emit logUpdated("无法启动latexmk");
+        qWarning() << "[LATEX_START_FAILED] error=" << m_process->errorString()
+                   << "path=" << m_latexmkPath << "workspace=" << m_workspaceDir;
         return;
     }
 #ifdef Q_OS_WIN
