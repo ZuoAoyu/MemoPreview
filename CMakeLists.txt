@@ -24,29 +24,29 @@ target_link_libraries(WindowsOLE INTERFACE
 )
 
 set(PROJECT_SOURCES
-        main.cpp
-        MainWindow.cpp
-        MainWindow.h
-        SettingsDialog.h SettingsDialog.cpp
-        TemplateEditDialog.h TemplateEditDialog.cpp
-        TemplateService.h TemplateService.cpp
-        PreviewSyncService.h PreviewSyncService.cpp
-        WriteDebouncePolicy.h WriteDebouncePolicy.cpp
-        RetryBackoffPolicy.h RetryBackoffPolicy.cpp
-        SuperMemoGateway.h SuperMemoGateway.cpp
-        LatexCompileService.h LatexCompileService.cpp
-        LatexmkManager.h LatexmkManager.cpp
-        LogDialog.h LogDialog.cpp
+        src/main.cpp
+        src/MainWindow.cpp
+        include/MainWindow.h
+        include/SettingsDialog.h src/SettingsDialog.cpp
+        include/TemplateEditDialog.h src/TemplateEditDialog.cpp
+        include/TemplateService.h src/TemplateService.cpp
+        include/PreviewSyncService.h src/PreviewSyncService.cpp
+        include/WriteDebouncePolicy.h src/WriteDebouncePolicy.cpp
+        include/RetryBackoffPolicy.h src/RetryBackoffPolicy.cpp
+        include/SuperMemoGateway.h src/SuperMemoGateway.cpp
+        include/LatexCompileService.h src/LatexCompileService.cpp
+        include/LatexmkManager.h src/LatexmkManager.cpp
+        include/LogDialog.h src/LogDialog.cpp
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
     qt_add_executable(MemoPreview
         MANUAL_FINALIZATION
         ${PROJECT_SOURCES}
-        SuperMemoWindowInfo.h
-        SuperMemoWindowUtils.h SuperMemoWindowUtils.cpp
-        SuperMemoIeExtractor.h SuperMemoIeExtractor.cpp
-        SettingsUtils.h SettingsUtils.cpp
+        include/SuperMemoWindowInfo.h
+        include/SuperMemoWindowUtils.h src/SuperMemoWindowUtils.cpp
+        include/SuperMemoIeExtractor.h src/SuperMemoIeExtractor.cpp
+        include/SettingsUtils.h src/SettingsUtils.cpp
         Config.h.in
     )
 # Define target properties for Android with Qt 6 as:
@@ -68,7 +68,10 @@ else()
 endif()
 
 target_link_libraries(MemoPreview PRIVATE Qt${QT_VERSION_MAJOR}::Widgets WindowsOLE Qt6::Concurrent)
-target_include_directories(MemoPreview PRIVATE "${CMAKE_BINARY_DIR}")
+target_include_directories(MemoPreview PRIVATE
+    "${CMAKE_BINARY_DIR}"
+    "${CMAKE_SOURCE_DIR}/include"
+)
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an
@@ -100,11 +103,13 @@ if(MEMOPREVIEW_BUILD_TESTS)
     enable_testing()
     add_executable(MemoPreviewTests
         tests/MemoPreviewTests.cpp
-        PreviewSyncService.cpp
-        WriteDebouncePolicy.cpp
-        RetryBackoffPolicy.cpp
+        src/PreviewSyncService.cpp
+        src/WriteDebouncePolicy.cpp
+        src/RetryBackoffPolicy.cpp
     )
     target_link_libraries(MemoPreviewTests PRIVATE Qt${QT_VERSION_MAJOR}::Core)
-    target_include_directories(MemoPreviewTests PRIVATE "${CMAKE_SOURCE_DIR}")
+    target_include_directories(MemoPreviewTests PRIVATE
+        "${CMAKE_SOURCE_DIR}/include"
+    )
     add_test(NAME MemoPreviewTests COMMAND MemoPreviewTests)
 endif()
