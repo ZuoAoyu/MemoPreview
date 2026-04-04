@@ -111,10 +111,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(latexTemplateSelector, &QComboBox::currentTextChanged, this, [this](const QString& title){
         currentTemplateTitle = title;
-
-        // 记住用户所选项
-        QSettings settings{SOFTWARE_NAME, SOFTWARE_NAME};
-        settings.setValue("lastTemplateTitle", title);
+        m_templateService.saveLastSelectedTitle(title);
 
         // 可立即触发一次刷新内容写入 main.tex
         updateLatexSourceIfNeeded();
@@ -372,40 +369,19 @@ void MainWindow::updateLatexSourceIfNeeded()
     QSettings settings{SOFTWARE_NAME, SOFTWARE_NAME};
     QString workspacePath = settings.value("workspacePath").toString();
     if (workspacePath.isEmpty() || currentIeControls.empty() || currentTemplateTitle.isEmpty()) return;
-
-    QString texFile = workspacePath + "/main.tex";
-
-    QString memoContent;
-    bool firstControl = true;
-    // 多控件拼成多段
-    for (int i = currentIeControls.size() - 1; i >= 0; --i) {
-        if (!firstControl) memoContent += "\\newpage\n";
-        const auto& ctrl = currentIeControls[i];
-        memoContent += QString("%% === 控件%1 Title: %2 URL: %3\n")
-                           .arg(i+1).arg(ctrl.htmlTitle).arg(ctrl.url);
-        memoContent += ctrl.content + "\n\n";
-        firstControl = false;
-    }
-
-    // 获取选中的模板内容
-    QString templateText = templateContentMap.value(currentTemplateTitle);
-    if (templateText.isEmpty()) templateText = "%CONTENT%";
-
-    QString latexContent = templateText;
-    latexContent.replace("%CONTENT%", memoContent);
+    const QString templateText = templateContentMap.value(currentTemplateTitle);
+    const QString latexContent = m_previewSyncService.buildLatexContent(templateText, currentIeControls);
 
     if (latexContent == lastWrittenLatexContent) {
         return;
     }
 
-    QFile file(texFile);
-    if (file.open(QIODevice::WriteOnly)) {
-        file.write(latexContent.toUtf8());
-        file.close();
+    QString error;
+    if (m_previewSyncService.writeMainTex(workspacePath, latexContent, &error)) {
         lastWrittenLatexContent = latexContent;
         lastLatexWriteClock.start();
     } else {
-        qWarning() << "[WRITE_MAIN_TEX_FAILED] file=" << texFile << "error=" << file.errorString();
+        qWarning() << "[WRITE_MAIN_TEX_FAILED] workspace=" << workspacePath << "error=" << error;
     }
 }
 
@@ -418,29 +394,19 @@ void MainWindow::updateSuperMemoStatus(const QString &status, bool good)
 
 void MainWindow::loadAllTemplatesFromSettings()
 {
-    QSettings settings{SOFTWARE_NAME, SOFTWARE_NAME};
-    QStringList templates = settings.value("templates").toStringList();
-    QString lastTemplate = settings.value("lastTemplateTitle").toString();
-
+    const TemplateSnapshot snapshot = m_templateService.loadFromSettings();
     templateContentMap.clear();
     latexTemplateSelector->clear();
-    for (const auto& title : templates) {
-        QString content = settings.value("templateContent/" + title, "").toString();
-        templateContentMap[title] = content;
+    templateContentMap = snapshot.contentMap;
+
+    for (const auto& title : snapshot.titles) {
         latexTemplateSelector->addItem(title);
     }
 
-    if (templateContentMap.contains(lastTemplate)) {
-        currentTemplateTitle = lastTemplate;
-        latexTemplateSelector->setCurrentText(lastTemplate);
-    } else if (!templateContentMap.isEmpty()) {
-        // 自动切到第一个模板，并修正 lastTemplateTitle
-        QString first = templateContentMap.firstKey();
-        currentTemplateTitle = first;
-        latexTemplateSelector->setCurrentText(first);
-        settings.setValue("lastTemplateTitle", first);  // 自动修正
+    if (!snapshot.currentTitle.isEmpty() && templateContentMap.contains(snapshot.currentTitle)) {
+        currentTemplateTitle = snapshot.currentTitle;
+        latexTemplateSelector->setCurrentText(snapshot.currentTitle);
     } else {
         currentTemplateTitle.clear();
-        settings.remove("lastTemplateTitle");
     }
 }

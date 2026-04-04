@@ -10,8 +10,10 @@
 #include <QThreadPool>
 #include "LatexmkManager.h"
 #include "LogDialog.h"
+#include "PreviewSyncService.h"
 #include "SuperMemoWindowInfo.h"
 #include "SuperMemoIeExtractor.h"
+#include "TemplateService.h"
 
 class MainWindow : public QMainWindow
 {
@@ -69,6 +71,8 @@ private:
     bool isExtracting = false;
     bool m_isShuttingDown = false;
     QThreadPool m_extractionPool;
+    TemplateService m_templateService;
+    PreviewSyncService m_previewSyncService;
 
     QComboBox* latexTemplateSelector = nullptr;
     QMap<QString, QString> templateContentMap; // 模板标题->内容

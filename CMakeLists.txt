@@ -29,6 +29,8 @@ set(PROJECT_SOURCES
         MainWindow.h
         SettingsDialog.h SettingsDialog.cpp
         TemplateEditDialog.h TemplateEditDialog.cpp
+        TemplateService.h TemplateService.cpp
+        PreviewSyncService.h PreviewSyncService.cpp
         LatexmkManager.h LatexmkManager.cpp
         LogDialog.h LogDialog.cpp
 )
