@@ -112,4 +112,15 @@ if(MEMOPREVIEW_BUILD_TESTS)
         "${CMAKE_SOURCE_DIR}/include"
     )
     add_test(NAME MemoPreviewTests COMMAND MemoPreviewTests)
+
+    add_executable(SuperMemoLiveDiagnostics
+        tests/SuperMemoLiveDiagnostics.cpp
+        src/SuperMemoGateway.cpp
+        src/SuperMemoWindowUtils.cpp
+        src/SuperMemoIeExtractor.cpp
+    )
+    target_link_libraries(SuperMemoLiveDiagnostics PRIVATE Qt${QT_VERSION_MAJOR}::Core WindowsOLE)
+    target_include_directories(SuperMemoLiveDiagnostics PRIVATE
+        "${CMAKE_SOURCE_DIR}/include"
+    )
 endif()

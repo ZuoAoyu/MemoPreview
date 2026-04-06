@@ -245,18 +245,34 @@ void MainWindow::createStatusBar()
 
 void MainWindow::refreshSuperMemoWindowList()
 {
+    const quintptr previousHwnd = reinterpret_cast<quintptr>(currentSuperMemoHwnd);
     m_superMemoWindows = m_superMemoGateway.enumerateWindows();
     qInfo() << "[SM_WIN_SCAN] found windows:" << m_superMemoWindows.size();
     superWindowSelector->clear();
-    for (const auto& info : m_superMemoWindows) {
+    int selectedIndex = -1;
+    for (int i = 0; i < m_superMemoWindows.size(); ++i) {
+        const auto& info = m_superMemoWindows[i];
+        QString title = info.title.trimmed();
+        if (title.isEmpty()) {
+            title = QStringLiteral("未命名窗口");
+        }
+        if (info.isMinimized) {
+            title += QStringLiteral(" [已最小化]");
+        }
         QString label = QString("[%1] PID:%2")
-        .arg(info.title).arg(info.processId);
+            .arg(title).arg(info.processId);
         superWindowSelector->addItem(label);
+        if (reinterpret_cast<quintptr>(info.hwnd) == previousHwnd) {
+            selectedIndex = i;
+        }
     }
 
     if (!m_superMemoWindows.isEmpty()) {
-        superWindowSelector->setCurrentIndex(0);
-        currentSuperMemoHwnd = (HWND)m_superMemoWindows[0].hwnd;
+        if (selectedIndex < 0) {
+            selectedIndex = 0;
+        }
+        superWindowSelector->setCurrentIndex(selectedIndex);
+        currentSuperMemoHwnd = (HWND)m_superMemoWindows[selectedIndex].hwnd;
         updateSuperMemoStatus("已连接SuperMemo", true);
         refreshIeControls();
     } else {

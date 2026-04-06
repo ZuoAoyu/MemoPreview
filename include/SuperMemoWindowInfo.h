@@ -8,7 +8,7 @@ struct SuperMemoWindowInfo {
     HWND hwnd = nullptr;
     QString title;
     DWORD processId = 0;
-    QString processExe;
+    bool isMinimized = false;
 };
 
 #endif // SUPERMEMOWINDOWINFO_H

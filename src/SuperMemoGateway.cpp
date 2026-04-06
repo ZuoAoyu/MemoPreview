@@ -4,6 +4,18 @@
 #include <QStringList>
 #include "SuperMemoWindowUtils.h"
 
+namespace {
+QString buildContentHash(const std::vector<IeControlContent>& controls)
+{
+    QStringList contentList;
+    contentList.reserve(static_cast<qsizetype>(controls.size()));
+    for (const auto& ctrl : controls) {
+        contentList << ctrl.content;
+    }
+    return contentList.join("");
+}
+}
+
 QVector<SuperMemoWindowInfo> SuperMemoGateway::enumerateWindows() const
 {
     return SuperMemoWindowUtils::enumerateAllSuperMemoWindows();
@@ -28,14 +40,23 @@ bool SuperMemoGateway::isForegroundProcess(HWND hwnd) const
 SuperMemoExtractionSnapshot SuperMemoGateway::extractControls(HWND hwnd) const
 {
     SuperMemoExtractionSnapshot snapshot;
-    SuperMemoIeExtractor extractor(hwnd);
-    snapshot.controls = extractor.extractAllIeControls();
-
-    QStringList contentList;
-    contentList.reserve(static_cast<qsizetype>(snapshot.controls.size()));
-    for (const auto& ctrl : snapshot.controls) {
-        contentList << ctrl.content;
+    if (!hwnd) {
+        snapshot.contentHash.clear();
+        return snapshot;
     }
-    snapshot.contentHash = contentList.join("");
+
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    HWND extractionTarget = hwnd;
+    if (pid != 0) {
+        const HWND bestWindow = SuperMemoWindowUtils::findBestContentWindow(pid);
+        if (bestWindow) {
+            extractionTarget = bestWindow;
+        }
+    }
+
+    SuperMemoIeExtractor extractor(extractionTarget);
+    snapshot.controls = extractor.extractAllIeControls();
+    snapshot.contentHash = buildContentHash(snapshot.controls);
     return snapshot;
 }
