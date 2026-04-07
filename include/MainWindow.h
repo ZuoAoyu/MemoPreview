@@ -33,6 +33,8 @@ private:
 
     void refreshSuperMemoWindowList();
     void refreshIeControls();
+    int currentRefreshBaseIntervalMs() const;
+    void scheduleNextIeRefresh(int extractionDurationMs = 0, bool forceImmediate = false);
     void updateLatexSourceIfNeeded();
     void scheduleLatexUpdateOnContentChanged();
 
@@ -69,6 +71,7 @@ private:
 
     // 提取状态标志，防止重叠执行
     bool isExtracting = false;
+    bool m_refreshPending = false;
     bool m_isShuttingDown = false;
     QThreadPool m_extractionPool;
     TemplateService m_templateService;

@@ -96,6 +96,23 @@ void testSuperMemoIeExtractorPreservesLatexBlocks()
         "paragraph break after latex block should be preserved");
 }
 
+void testSuperMemoIeExtractorPreservesPlainParagraphs()
+{
+    const QString html = QString::fromUtf8(R"(
+<html>
+  <body>
+    <p>First paragraph.</p>
+    <p>Second <b>paragraph</b> with inline formatting.</p>
+  </body>
+</html>
+)");
+
+    const QString extracted = normalizedForTest(SuperMemoIeExtractor::extractTextFromHtml(html));
+    expectTrue(
+        extracted.contains("First paragraph.\n\nSecond paragraph with inline formatting."),
+        "plain paragraphs should keep paragraph breaks and inline spaces");
+}
+
 void testSuperMemoIeExtractorPreservesInlineSpaces()
 {
     const QString html = QString::fromUtf8(R"(
@@ -153,6 +170,7 @@ int main(int argc, char* argv[])
 
     testPreviewSyncService();
     testSuperMemoIeExtractorPreservesLatexBlocks();
+    testSuperMemoIeExtractorPreservesPlainParagraphs();
     testSuperMemoIeExtractorPreservesInlineSpaces();
     testWriteDebouncePolicy();
     testRetryBackoffPolicy();

@@ -16,7 +16,7 @@ class SuperMemoGateway
 public:
     QVector<SuperMemoWindowInfo> enumerateWindows() const;
     bool isForegroundProcess(HWND hwnd) const;
-    SuperMemoExtractionSnapshot extractControls(HWND hwnd) const;
+    SuperMemoExtractionSnapshot extractControls(HWND hwnd, const std::vector<IeControlContent>& previousControls = {}) const;
 };
 
 #endif // SUPERMEMOGATEWAY_H

@@ -19,8 +19,9 @@
 namespace {
 constexpr int CONTENT_WRITE_DEBOUNCE_MS = 700;
 constexpr int MIN_IMMEDIATE_WRITE_GAP_MS = 250;
-constexpr int IE_REFRESH_ACTIVE_INTERVAL_MS = 250;
-constexpr int IE_REFRESH_INACTIVE_INTERVAL_MS = 800;
+constexpr int IE_REFRESH_ACTIVE_BASE_INTERVAL_MS = 250;
+constexpr int IE_REFRESH_INACTIVE_BASE_INTERVAL_MS = 800;
+constexpr int IE_REFRESH_MIN_IDLE_GAP_MS = 60;
 }
 
 MainWindow::MainWindow(QWidget *parent)
@@ -80,12 +81,9 @@ MainWindow::MainWindow(QWidget *parent)
         logDialog->activateWindow();
     });
 
-    refreshSuperMemoWindowList();
-
-    // 刷新定时器，防抖，每0.5s定时拉取
-    // 定时轮询 SuperMemo 窗口内容，看看 IE 控件内容有没有变化
+    // 刷新定时器改为单次调度：下一轮只在本轮提取完成后安排，避免高频空转。
     ieRefreshTimer = new QTimer(this);
-    ieRefreshTimer->setInterval(IE_REFRESH_ACTIVE_INTERVAL_MS);
+    ieRefreshTimer->setSingleShot(true);
     connect(ieRefreshTimer, &QTimer::timeout, this, &MainWindow::refreshIeControls);
 
     // 防止连续高频写入 main.tex 文件，只在内容稳定后再保存。
@@ -98,13 +96,13 @@ MainWindow::MainWindow(QWidget *parent)
         if (idx < 0 || idx >= m_superMemoWindows.size()) return;
         currentSuperMemoHwnd = (HWND)m_superMemoWindows[idx].hwnd;
         ieTabWidget->clear();
+        currentIeControls.clear();
         lastAllContentHash.clear();
         debounceTimer->stop();
+        m_refreshPending = false;
         // 立即刷新
         refreshIeControls();
     });
-
-    ieRefreshTimer->start();
 
     connect(latexTemplateSelector, &QComboBox::currentTextChanged, this, [this](const QString& title){
         currentTemplateTitle = title;
@@ -114,6 +112,7 @@ MainWindow::MainWindow(QWidget *parent)
         updateLatexSourceIfNeeded();
     });
 
+    refreshSuperMemoWindowList();
     loadAllTemplatesFromSettings();
 }
 
@@ -273,6 +272,9 @@ void MainWindow::refreshSuperMemoWindowList()
         }
         superWindowSelector->setCurrentIndex(selectedIndex);
         currentSuperMemoHwnd = (HWND)m_superMemoWindows[selectedIndex].hwnd;
+        currentIeControls.clear();
+        lastAllContentHash.clear();
+        m_refreshPending = false;
         updateSuperMemoStatus("已连接SuperMemo", true);
         refreshIeControls();
     } else {
@@ -280,6 +282,12 @@ void MainWindow::refreshSuperMemoWindowList()
         currentSuperMemoHwnd = nullptr;
         updateSuperMemoStatus("未检测到SuperMemo窗口", false);
         ieTabWidget->clear();
+        currentIeControls.clear();
+        lastAllContentHash.clear();
+        m_refreshPending = false;
+        if (ieRefreshTimer) {
+            ieRefreshTimer->stop();
+        }
     }
 }
 
@@ -287,65 +295,98 @@ void MainWindow::refreshIeControls()
 {
     if (!currentSuperMemoHwnd || m_isShuttingDown) return;
 
-    // 如果上次提取还在进行中，跳过本次
-    if (isExtracting) return;
-
-    // 检测SuperMemo所属进程是否位于前台（比窗口句柄相等更稳）
-    const bool isSuperMemoActive = m_superMemoGateway.isForegroundProcess(currentSuperMemoHwnd);
-
-    // 前台时高频更新，后台时仍保持亚秒级刷新，避免“几秒后才更新”
-    const int targetInterval = isSuperMemoActive
-        ? IE_REFRESH_ACTIVE_INTERVAL_MS
-        : IE_REFRESH_INACTIVE_INTERVAL_MS;
-    if (ieRefreshTimer && ieRefreshTimer->interval() != targetInterval) {
-        ieRefreshTimer->setInterval(targetInterval);
+    // 如果上次提取还在进行中，只记住“还需要再跑一次”。
+    if (isExtracting) {
+        m_refreshPending = true;
+        return;
     }
 
     isExtracting = true;
+    m_refreshPending = false;
     const HWND extractionTargetHwnd = currentSuperMemoHwnd;
+    const auto previousControls = currentIeControls;
     QPointer<MainWindow> guardThis(this);
 
     // 开线程抓取，否则大窗口可能会卡
-    m_extractionPool.start([guardThis, extractionTargetHwnd]() {
+    m_extractionPool.start([guardThis, extractionTargetHwnd, previousControls]() {
+        QElapsedTimer extractionClock;
+        extractionClock.start();
+
         SuperMemoGateway gateway;
-        const SuperMemoExtractionSnapshot snapshot = gateway.extractControls(extractionTargetHwnd);
+        const SuperMemoExtractionSnapshot snapshot = gateway.extractControls(extractionTargetHwnd, previousControls);
         auto allCtrls = snapshot.controls;
         const QString allHash = snapshot.contentHash;
+        const int extractionDurationMs = static_cast<int>(extractionClock.elapsed());
 
         if (!guardThis) return;
-        QMetaObject::invokeMethod(guardThis.data(), [guardThis, allCtrls = std::move(allCtrls), allHash, extractionTargetHwnd]() mutable {
+        QMetaObject::invokeMethod(guardThis.data(), [guardThis, allCtrls = std::move(allCtrls), allHash, extractionTargetHwnd, extractionDurationMs]() mutable {
             if (!guardThis) return;
             auto* self = guardThis.data();
             self->isExtracting = false;
 
             if (self->m_isShuttingDown) return;
-            if (self->currentSuperMemoHwnd != extractionTargetHwnd) return;
-            if (allHash == self->lastAllContentHash) return;
+            const bool forceImmediate = self->m_refreshPending;
+            self->m_refreshPending = false;
 
-            self->lastAllContentHash = allHash;
-            self->currentIeControls = allCtrls;
-
-            self->ieTabWidget->clear();
-            if (allCtrls.empty()) {
-                auto* info = new QTextEdit;
-                info->setReadOnly(true);
-                info->setPlainText("未检测到任何 Internet Explorer_Server 控件！");
-                self->ieTabWidget->addTab(info, "无控件");
+            if (self->currentSuperMemoHwnd != extractionTargetHwnd) {
+                self->scheduleNextIeRefresh(0, true);
                 return;
             }
-            // 以相反的顺序遍历控件，这样才和 SuperMemo 窗口中控件的顺序一致
-            for (int i = allCtrls.size() - 1; i >= 0; --i) {
-                auto &ctrl = allCtrls[i];
-                auto* textEdit = new QTextEdit;
-                textEdit->setReadOnly(true);
-                textEdit->setPlainText(ctrl.content);
-                QString tabLabel = QString("控件%1 %2").arg(allCtrls.size() - i).arg(ctrl.htmlTitle);
-                self->ieTabWidget->addTab(textEdit, tabLabel);
+
+            const bool snapshotChanged = (allHash != self->lastAllContentHash) || self->ieTabWidget->count() == 0;
+            if (snapshotChanged) {
+                self->lastAllContentHash = allHash;
+                self->currentIeControls = allCtrls;
+
+                self->ieTabWidget->clear();
+                if (allCtrls.empty()) {
+                    auto* info = new QTextEdit;
+                    info->setReadOnly(true);
+                    info->setPlainText("未检测到任何 Internet Explorer_Server 控件！");
+                    self->ieTabWidget->addTab(info, "无控件");
+                } else {
+                    // 以相反的顺序遍历控件，这样才和 SuperMemo 窗口中控件的顺序一致
+                    for (int i = allCtrls.size() - 1; i >= 0; --i) {
+                        auto &ctrl = allCtrls[i];
+                        auto* textEdit = new QTextEdit;
+                        textEdit->setReadOnly(true);
+                        textEdit->setPlainText(ctrl.content);
+                        QString tabLabel = QString("控件%1 %2").arg(allCtrls.size() - i).arg(ctrl.htmlTitle);
+                        self->ieTabWidget->addTab(textEdit, tabLabel);
+                    }
+
+                    self->scheduleLatexUpdateOnContentChanged();
+                }
             }
 
-            self->scheduleLatexUpdateOnContentChanged();
+            self->scheduleNextIeRefresh(extractionDurationMs, forceImmediate);
         }, Qt::QueuedConnection);
     });
+}
+
+int MainWindow::currentRefreshBaseIntervalMs() const
+{
+    const bool isSuperMemoActive = m_superMemoGateway.isForegroundProcess(currentSuperMemoHwnd);
+    return isSuperMemoActive
+        ? IE_REFRESH_ACTIVE_BASE_INTERVAL_MS
+        : IE_REFRESH_INACTIVE_BASE_INTERVAL_MS;
+}
+
+void MainWindow::scheduleNextIeRefresh(int extractionDurationMs, bool forceImmediate)
+{
+    if (!ieRefreshTimer || m_isShuttingDown || !currentSuperMemoHwnd) {
+        return;
+    }
+
+    ieRefreshTimer->stop();
+    if (forceImmediate) {
+        ieRefreshTimer->start(0);
+        return;
+    }
+
+    const int baseIntervalMs = currentRefreshBaseIntervalMs();
+    const int delayMs = qMax(IE_REFRESH_MIN_IDLE_GAP_MS, baseIntervalMs - qMax(0, extractionDurationMs));
+    ieRefreshTimer->start(delayMs);
 }
 
 void MainWindow::scheduleLatexUpdateOnContentChanged()

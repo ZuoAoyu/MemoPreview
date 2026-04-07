@@ -10,9 +10,14 @@ QString buildContentHash(const std::vector<IeControlContent>& controls)
     QStringList contentList;
     contentList.reserve(static_cast<qsizetype>(controls.size()));
     for (const auto& ctrl : controls) {
-        contentList << ctrl.content;
+        contentList << QStringLiteral("%1|%2|%3|%4|%5")
+                           .arg(reinterpret_cast<quintptr>(ctrl.hwnd))
+                           .arg(ctrl.bodyHtmlHash)
+                           .arg(ctrl.bodyHtmlLength)
+                           .arg(ctrl.htmlTitle)
+                           .arg(ctrl.url);
     }
-    return contentList.join("");
+    return contentList.join(QStringLiteral("||"));
 }
 }
 
@@ -37,7 +42,7 @@ bool SuperMemoGateway::isForegroundProcess(HWND hwnd) const
     return foregroundPid != 0 && foregroundPid == superMemoPid;
 }
 
-SuperMemoExtractionSnapshot SuperMemoGateway::extractControls(HWND hwnd) const
+SuperMemoExtractionSnapshot SuperMemoGateway::extractControls(HWND hwnd, const std::vector<IeControlContent>& previousControls) const
 {
     SuperMemoExtractionSnapshot snapshot;
     if (!hwnd) {
@@ -56,7 +61,7 @@ SuperMemoExtractionSnapshot SuperMemoGateway::extractControls(HWND hwnd) const
     }
 
     SuperMemoIeExtractor extractor(extractionTarget);
-    snapshot.controls = extractor.extractAllIeControls();
+    snapshot.controls = extractor.extractAllIeControls(previousControls);
     snapshot.contentHash = buildContentHash(snapshot.controls);
     return snapshot;
 }

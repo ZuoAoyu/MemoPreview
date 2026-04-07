@@ -1,6 +1,7 @@
 #include "SuperMemoIeExtractor.h"
 
 #include <QDebug>
+#include <QHash>
 #include <QSet>
 
 namespace {
@@ -14,6 +15,11 @@ enum class HighlightMode {
 
 struct TextAppendState {
     bool pendingSpace = false;
+};
+
+struct ElementInfo {
+    QString tag;
+    QString className;
 };
 
 QString bstrToQString(BSTR bstr)
@@ -37,6 +43,16 @@ bool isBlockElement(const QString& tag)
         "h1", "h2", "h3", "h4", "h5", "h6"
     };
     return blocks.contains(tag);
+}
+
+bool hasHighlightClass(const QString& className)
+{
+    return className.contains("extract") || className.contains("clozed");
+}
+
+quint32 computeBodyHtmlHash(const QString& bodyHtml)
+{
+    return bodyHtml.isEmpty() ? 0u : qHash(bodyHtml);
 }
 
 void ensureEmptyLine(QString& result, TextAppendState& state)
@@ -63,6 +79,22 @@ QString normalizeInlineWhitespace(QString text)
     text.replace('\r', ' ');
     text.replace('\n', ' ');
     text.replace(QChar(0x00A0), ' ');
+    return text;
+}
+
+QString normalizeTextLineBreaks(QString text)
+{
+    text.replace("\r\n", "\n");
+    text.replace('\r', '\n');
+    text.replace('\n', "\r\n");
+    return text;
+}
+
+QString trimTrailingLineBreaks(QString text)
+{
+    while (text.endsWith("\r\n")) {
+        text.chop(2);
+    }
     return text;
 }
 
@@ -95,6 +127,126 @@ void appendRenderedToken(QString& result,
     state.pendingSpace = trailingSpace;
 }
 
+QString extractTextNodeContent(IHTMLDOMNode* node,
+                               TextAppendState& state,
+                               HighlightMode highlightMode,
+                               QString* target = nullptr)
+{
+    if (!node) {
+        return {};
+    }
+
+    VARIANT value;
+    VariantInit(&value);
+    QString rendered;
+    if (SUCCEEDED(node->get_nodeValue(&value)) && value.vt == VT_BSTR && value.bstrVal) {
+        const QString rawText = normalizeInlineWhitespace(bstrToQString(value.bstrVal));
+        const bool leadingSpace = !rawText.isEmpty() && rawText.front().isSpace();
+        const bool trailingSpace = !rawText.isEmpty() && rawText.back().isSpace();
+        const QString collapsed = rawText.simplified();
+        VariantClear(&value);
+
+        if (collapsed.isEmpty()) {
+            state.pendingSpace = state.pendingSpace || leadingSpace || trailingSpace;
+            return {};
+        }
+
+        QString sink;
+        QString& output = target ? *target : sink;
+        appendRenderedToken(output, collapsed, state, highlightMode, leadingSpace, trailingSpace);
+        rendered = collapsed;
+    } else {
+        VariantClear(&value);
+    }
+
+    return rendered;
+}
+
+ElementInfo getElementInfo(IHTMLDOMNode* node)
+{
+    ElementInfo info;
+    IHTMLElement* element = nullptr;
+    if (FAILED(node->QueryInterface(IID_IHTMLElement, reinterpret_cast<void**>(&element))) || !element) {
+        return info;
+    }
+
+    BSTR tagBstr = nullptr;
+    if (SUCCEEDED(element->get_tagName(&tagBstr)) && tagBstr) {
+        info.tag = bstrToQString(tagBstr).toLower();
+        SysFreeString(tagBstr);
+    }
+
+    BSTR classBstr = nullptr;
+    if (SUCCEEDED(element->get_className(&classBstr)) && classBstr) {
+        info.className = bstrToQString(classBstr).toLower();
+        SysFreeString(classBstr);
+    }
+
+    element->Release();
+    return info;
+}
+
+QString getElementInnerHtml(IHTMLElement* element)
+{
+    if (!element) {
+        return {};
+    }
+
+    BSTR htmlBstr = nullptr;
+    if (SUCCEEDED(element->get_innerHTML(&htmlBstr)) && htmlBstr) {
+        const QString html = bstrToQString(htmlBstr);
+        SysFreeString(htmlBstr);
+        return html;
+    }
+
+    return {};
+}
+
+QString getElementInnerText(IHTMLElement* element)
+{
+    if (!element) {
+        return {};
+    }
+
+    BSTR textBstr = nullptr;
+    if (SUCCEEDED(element->get_innerText(&textBstr)) && textBstr) {
+        const QString text = bstrToQString(textBstr);
+        SysFreeString(textBstr);
+        return text;
+    }
+
+    return {};
+}
+
+bool isRiskyFastBlockHtml(const QString& innerHtml)
+{
+    const QString lowerHtml = innerHtml.toLower();
+    static const QStringList riskyMarkers = {
+        "<br",
+        "<p",
+        "<div",
+        "<ul",
+        "<ol",
+        "<li",
+        "<h1",
+        "<h2",
+        "<h3",
+        "<h4",
+        "<h5",
+        "<h6",
+        "extract",
+        "clozed"
+    };
+
+    for (const auto& marker : riskyMarkers) {
+        if (lowerHtml.contains(marker)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 void appendNodeText(IHTMLDOMNode* node,
                     QString& result,
                     TextAppendState& state,
@@ -110,62 +262,28 @@ void appendNodeText(IHTMLDOMNode* node,
     }
 
     if (nodeType == 3) {
-        VARIANT value;
-        VariantInit(&value);
-        if (SUCCEEDED(node->get_nodeValue(&value)) && value.vt == VT_BSTR && value.bstrVal) {
-            const QString rawText = normalizeInlineWhitespace(bstrToQString(value.bstrVal));
-            const bool leadingSpace = !rawText.isEmpty() && rawText.front().isSpace();
-            const bool trailingSpace = !rawText.isEmpty() && rawText.back().isSpace();
-            const QString collapsed = rawText.simplified();
-            VariantClear(&value);
-
-            if (collapsed.isEmpty()) {
-                state.pendingSpace = state.pendingSpace || leadingSpace || trailingSpace;
-                return;
-            }
-
-            appendRenderedToken(result, collapsed, state, highlightMode, leadingSpace, trailingSpace);
-        } else {
-            VariantClear(&value);
-        }
+        extractTextNodeContent(node, state, highlightMode, &result);
         return;
     }
 
     if (nodeType == 1) {
-        IHTMLElement* element = nullptr;
-        QString tag;
-        QString className;
-        if (SUCCEEDED(node->QueryInterface(IID_IHTMLElement, reinterpret_cast<void**>(&element))) && element) {
-            BSTR tagBstr = nullptr;
-            if (SUCCEEDED(element->get_tagName(&tagBstr)) && tagBstr) {
-                tag = bstrToQString(tagBstr).toLower();
-                SysFreeString(tagBstr);
-            }
+        const ElementInfo info = getElementInfo(node);
 
-            BSTR classBstr = nullptr;
-            if (SUCCEEDED(element->get_className(&classBstr)) && classBstr) {
-                className = bstrToQString(classBstr).toLower();
-                SysFreeString(classBstr);
-            }
-
-            element->Release();
-        }
-
-        if (tag == "br") {
+        if (info.tag == "br") {
             state.pendingSpace = false;
             result += "\r\n";
             return;
         }
 
-        if (isBlockElement(tag)) {
+        if (isBlockElement(info.tag)) {
             ensureEmptyLine(result, state);
         }
 
         HighlightMode childHighlight = highlightMode;
-        if (tag == "span" && !className.isEmpty()) {
-            if (className.contains("clozed")) {
+        if (info.tag == "span" && !info.className.isEmpty()) {
+            if (info.className.contains("clozed")) {
                 childHighlight = HighlightMode::Cloze;
-            } else if (className.contains("extract")) {
+            } else if (info.className.contains("extract")) {
                 childHighlight = HighlightMode::Extract;
             }
         }
@@ -195,37 +313,6 @@ void appendNodeText(IHTMLDOMNode* node,
     }
 }
 
-QString trimTrailingLineBreaks(QString text)
-{
-    while (text.endsWith("\r\n")) {
-        text.chop(2);
-    }
-    return text;
-}
-
-QString fallbackInnerText(IHTMLElement* element)
-{
-    if (!element) {
-        return {};
-    }
-
-    BSTR textBstr = nullptr;
-    if (SUCCEEDED(element->get_innerText(&textBstr)) && textBstr) {
-        const QString text = bstrToQString(textBstr);
-        SysFreeString(textBstr);
-        return text;
-    }
-
-    BSTR htmlBstr = nullptr;
-    if (SUCCEEDED(element->get_innerHTML(&htmlBstr)) && htmlBstr) {
-        const QString text = bstrToQString(htmlBstr);
-        SysFreeString(htmlBstr);
-        return text;
-    }
-
-    return {};
-}
-
 QString renderBodyText(IHTMLElement* body)
 {
     if (!body) {
@@ -242,6 +329,112 @@ QString renderBodyText(IHTMLElement* body)
 
     return trimTrailingLineBreaks(result);
 }
+
+QString fallbackInnerText(IHTMLElement* element)
+{
+    const QString innerText = trimTrailingLineBreaks(normalizeTextLineBreaks(getElementInnerText(element)));
+    if (!innerText.isEmpty()) {
+        return innerText;
+    }
+
+    return getElementInnerHtml(element);
+}
+
+bool tryRenderFastBodyText(IHTMLElement* body, QString& result)
+{
+    if (!body) {
+        return false;
+    }
+
+    IHTMLDOMNode* bodyNode = nullptr;
+    if (FAILED(body->QueryInterface(IID_IHTMLDOMNode, reinterpret_cast<void**>(&bodyNode))) || !bodyNode) {
+        return false;
+    }
+
+    QString fastText;
+    TextAppendState inlineState;
+    bool success = true;
+
+    IHTMLDOMNode* child = nullptr;
+    if (SUCCEEDED(bodyNode->get_firstChild(&child)) && child) {
+        while (child) {
+            IHTMLDOMNode* next = nullptr;
+            child->get_nextSibling(&next);
+
+            long nodeType = 0;
+            if (FAILED(child->get_nodeType(&nodeType))) {
+                success = false;
+            } else if (nodeType == 3) {
+                extractTextNodeContent(child, inlineState, HighlightMode::None, &fastText);
+            } else if (nodeType == 1) {
+                IHTMLElement* element = nullptr;
+                if (FAILED(child->QueryInterface(IID_IHTMLElement, reinterpret_cast<void**>(&element))) || !element) {
+                    success = false;
+                } else {
+                    const ElementInfo info = getElementInfo(child);
+                    if (hasHighlightClass(info.className)) {
+                        success = false;
+                    } else if (info.tag == "br") {
+                        inlineState.pendingSpace = false;
+                        fastText += "\r\n";
+                    } else if (!isBlockElement(info.tag)) {
+                        success = false;
+                    } else {
+                        const QString innerHtml = getElementInnerHtml(element);
+                        if (isRiskyFastBlockHtml(innerHtml)) {
+                            success = false;
+                        } else {
+                            const QString blockText = trimTrailingLineBreaks(normalizeTextLineBreaks(getElementInnerText(element)));
+                            if (!blockText.trimmed().isEmpty()) {
+                                ensureEmptyLine(fastText, inlineState);
+                                fastText += blockText;
+                                inlineState.pendingSpace = false;
+                            }
+                        }
+                    }
+                    element->Release();
+                }
+            } else {
+                success = false;
+            }
+
+            child->Release();
+            child = next;
+
+            if (!success) {
+                while (child) {
+                    IHTMLDOMNode* nextNode = nullptr;
+                    child->get_nextSibling(&nextNode);
+                    child->Release();
+                    child = nextNode;
+                }
+                break;
+            }
+        }
+    }
+
+    bodyNode->Release();
+
+    if (!success) {
+        return false;
+    }
+
+    result = trimTrailingLineBreaks(fastText);
+    return true;
+}
+
+QHash<quintptr, const IeControlContent*> buildPreviousControlCache(const std::vector<IeControlContent>& previousControls)
+{
+    QHash<quintptr, const IeControlContent*> cache;
+    cache.reserve(static_cast<int>(previousControls.size()));
+    for (const auto& control : previousControls) {
+        if (!control.hwnd) {
+            continue;
+        }
+        cache.insert(reinterpret_cast<quintptr>(control.hwnd), &control);
+    }
+    return cache;
+}
 }
 
 SuperMemoIeExtractor::SuperMemoIeExtractor(HWND superMemoHwnd)
@@ -253,13 +446,15 @@ SuperMemoIeExtractor::~SuperMemoIeExtractor()
 {
 }
 
-std::vector<IeControlContent> SuperMemoIeExtractor::extractAllIeControls()
+std::vector<IeControlContent> SuperMemoIeExtractor::extractAllIeControls(const std::vector<IeControlContent>& previousControls)
 {
     std::vector<IeControlContent> ret;
     auto hIeCtrls = enumerateIeControls(m_superMemoHwnd);
     if (hIeCtrls.empty()) {
         return ret;
     }
+
+    const auto previousByHwnd = buildPreviousControlCache(previousControls);
 
     HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     const bool comInit = SUCCEEDED(hr);
@@ -270,9 +465,11 @@ std::vector<IeControlContent> SuperMemoIeExtractor::extractAllIeControls()
         return ret;
     }
 
+    ret.reserve(hIeCtrls.size());
     for (HWND hwnd : hIeCtrls) {
         IeControlContent info;
-        if (extractControlContent(hwnd, info)) {
+        const IeControlContent* previousControl = previousByHwnd.value(reinterpret_cast<quintptr>(hwnd), nullptr);
+        if (extractControlContent(hwnd, previousControl, info)) {
             ret.push_back(info);
         }
     }
@@ -366,7 +563,7 @@ QString SuperMemoIeExtractor::extractTextFromHtml(const QString& html)
     return result;
 }
 
-bool SuperMemoIeExtractor::extractControlContent(HWND hwnd, IeControlContent& info)
+bool SuperMemoIeExtractor::extractControlContent(HWND hwnd, const IeControlContent* previousControl, IeControlContent& info)
 {
     char className[256] = {0};
     char winText[256] = {0};
@@ -379,7 +576,13 @@ bool SuperMemoIeExtractor::extractControlContent(HWND hwnd, IeControlContent& in
     info.isVisible = !!IsWindowVisible(hwnd);
     GetWindowRect(hwnd, &info.rect);
 
-    info.content = getDocumentContent(hwnd, info.htmlTitle, info.url);
+    info.content = getDocumentContent(
+        hwnd,
+        previousControl,
+        info.htmlTitle,
+        info.url,
+        &info.bodyHtmlHash,
+        &info.bodyHtmlLength);
 
     const int suRefPos = info.content.lastIndexOf("#SuperMemo Reference:");
     if (suRefPos != -1) {
@@ -389,7 +592,12 @@ bool SuperMemoIeExtractor::extractControlContent(HWND hwnd, IeControlContent& in
     return true;
 }
 
-QString SuperMemoIeExtractor::getDocumentContent(HWND hwnd, QString& title, QString& url)
+QString SuperMemoIeExtractor::getDocumentContent(HWND hwnd,
+                                                 const IeControlContent* previousControl,
+                                                 QString& title,
+                                                 QString& url,
+                                                 quint32* bodyHtmlHash,
+                                                 qsizetype* bodyHtmlLength)
 {
     const UINT message = RegisterWindowMessageA("WM_HTML_GETOBJECT");
     DWORD_PTR resultHandle = 0;
@@ -412,15 +620,27 @@ QString SuperMemoIeExtractor::getDocumentContent(HWND hwnd, QString& title, QStr
         return {};
     }
 
-    const QString content = extractDocumentContent(document, &title, &url);
+    const QString content = extractDocumentContent(document, previousControl, &title, &url, bodyHtmlHash, bodyHtmlLength);
     document->Release();
     return content;
 }
 
-QString SuperMemoIeExtractor::extractDocumentContent(IHTMLDocument2* document, QString* title, QString* url)
+QString SuperMemoIeExtractor::extractDocumentContent(IHTMLDocument2* document,
+                                                     const IeControlContent* previousControl,
+                                                     QString* title,
+                                                     QString* url,
+                                                     quint32* bodyHtmlHash,
+                                                     qsizetype* bodyHtmlLength)
 {
     if (!document) {
         return {};
+    }
+
+    if (bodyHtmlHash) {
+        *bodyHtmlHash = 0;
+    }
+    if (bodyHtmlLength) {
+        *bodyHtmlLength = 0;
     }
 
     if (title) {
@@ -446,12 +666,33 @@ QString SuperMemoIeExtractor::extractDocumentContent(IHTMLDocument2* document, Q
     QString result;
     IHTMLElement* body = nullptr;
     if (SUCCEEDED(document->get_body(&body)) && body) {
-        // Avoid body.innerText here: once IE flattens <p> and <br> into the same newline stream,
-        // we can no longer tell paragraph boundaries from multi-line LaTeX inside one paragraph.
-        result = renderBodyText(body);
-        if (result.isEmpty()) {
-            result = fallbackInnerText(body);
+        const QString bodyHtml = getElementInnerHtml(body);
+        const quint32 currentBodyHtmlHash = computeBodyHtmlHash(bodyHtml);
+        const qsizetype currentBodyHtmlLength = bodyHtml.size();
+
+        if (bodyHtmlHash) {
+            *bodyHtmlHash = currentBodyHtmlHash;
         }
+        if (bodyHtmlLength) {
+            *bodyHtmlLength = currentBodyHtmlLength;
+        }
+
+        if (previousControl &&
+            previousControl->bodyHtmlHash == currentBodyHtmlHash &&
+            previousControl->bodyHtmlLength == currentBodyHtmlLength) {
+            result = previousControl->content;
+        } else {
+            // Fast path: ordinary top-level blocks can be rendered cheaply from per-block innerText.
+            if (!tryRenderFastBodyText(body, result)) {
+                // Slow path: recurse only for risky structures like extract/clozed or paragraphs containing <br>.
+                result = renderBodyText(body);
+            }
+
+            if (result.isEmpty()) {
+                result = fallbackInnerText(body);
+            }
+        }
+
         body->Release();
     }
 
