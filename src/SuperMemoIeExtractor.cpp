@@ -1,32 +1,36 @@
-﻿#include "SuperMemoIeExtractor.h"
-#include <QSet>
-#include <QRegularExpression>
+#include "SuperMemoIeExtractor.h"
+
 #include <QDebug>
+#include <QSet>
+
 namespace {
 constexpr UINT HTML_GETOBJECT_TIMEOUT_MS = 250;
 
-QString normalizeParagraphBreaks(const QString &text)
-{
-    QString normalized = text;
-    normalized.replace("\r\n", "\n");
-    normalized.replace('\r', '\n');
-    normalized.replace(QRegularExpression{"(?<!\\n)\\n(?!\\n)"}, "\n\n");
-    normalized.replace("\n", "\r\n");
-    return normalized;
-}
-}
+enum class HighlightMode {
+    None,
+    Extract,
+    Cloze,
+};
 
-// BSTR->QString
+struct TextAppendState {
+    bool pendingSpace = false;
+};
+
 QString bstrToQString(BSTR bstr)
 {
-    if (!bstr) return {};
-    UINT len = ::SysStringLen(bstr);
-    if (len == 0) return {};
+    if (!bstr) {
+        return {};
+    }
+
+    const UINT len = ::SysStringLen(bstr);
+    if (len == 0) {
+        return {};
+    }
+
     return QString::fromWCharArray(bstr, len);
 }
 
-// 判断是不是块级元素（可按需再补充）
-bool isBlockElement(const QString &tag)
+bool isBlockElement(const QString& tag)
 {
     static const QSet<QString> blocks = {
         "p", "div", "ul", "ol", "li",
@@ -35,163 +39,228 @@ bool isBlockElement(const QString &tag)
     return blocks.contains(tag);
 }
 
-// 确保 result 结尾至少有一个空行（两次 \r\n）
-void ensureEmptyLine(QString &result)
+void ensureEmptyLine(QString& result, TextAppendState& state)
 {
-    if (result.isEmpty())
+    state.pendingSpace = false;
+    if (result.isEmpty()) {
         return;
+    }
 
-    if (result.endsWith("\r\n\r\n"))
+    if (result.endsWith("\r\n\r\n")) {
         return;
+    }
 
-    if (result.endsWith("\r\n"))
+    if (result.endsWith("\r\n")) {
         result += "\r\n";
-    else
+    } else {
         result += "\r\n\r\n";
+    }
 }
 
-enum class HighlightMode{
-    None,
-    Extract,
-    Cloze,
-};
-
-void appendNodeText(IHTMLDOMNode *pNode, QString &result, HighlightMode highlightMode = HighlightMode::None)
+QString normalizeInlineWhitespace(QString text)
 {
-    if (!pNode) return;
+    text.replace("\r\n", " ");
+    text.replace('\r', ' ');
+    text.replace('\n', ' ');
+    text.replace(QChar(0x00A0), ' ');
+    return text;
+}
+
+void appendRenderedToken(QString& result,
+                         const QString& text,
+                         TextAppendState& state,
+                         HighlightMode highlightMode,
+                         bool leadingSpace,
+                         bool trailingSpace)
+{
+    if ((state.pendingSpace || leadingSpace) &&
+        !result.isEmpty() &&
+        !result.endsWith("\r\n") &&
+        !result.endsWith(' ')) {
+        result += ' ';
+    }
+
+    switch (highlightMode) {
+    case HighlightMode::Extract:
+        result += QStringLiteral("\\hl{%1}").arg(text);
+        break;
+    case HighlightMode::Cloze:
+        result += QStringLiteral("\\hc{%1}").arg(text);
+        break;
+    default:
+        result += text;
+        break;
+    }
+
+    state.pendingSpace = trailingSpace;
+}
+
+void appendNodeText(IHTMLDOMNode* node,
+                    QString& result,
+                    TextAppendState& state,
+                    HighlightMode highlightMode = HighlightMode::None)
+{
+    if (!node) {
+        return;
+    }
 
     long nodeType = 0;
-    if (FAILED(pNode->get_nodeType(&nodeType)))
+    if (FAILED(node->get_nodeType(&nodeType))) {
         return;
+    }
 
-    // --- 文本节点 ---
-    if (nodeType == 3) { // NODE_TEXT
-        VARIANT v;
-        VariantInit(&v);
-        if (SUCCEEDED(pNode->get_nodeValue(&v)) && v.vt == VT_BSTR && v.bstrVal) {
-            QString text = bstrToQString(v.bstrVal);
-            VariantClear(&v);
+    if (nodeType == 3) {
+        VARIANT value;
+        VariantInit(&value);
+        if (SUCCEEDED(node->get_nodeValue(&value)) && value.vt == VT_BSTR && value.bstrVal) {
+            const QString rawText = normalizeInlineWhitespace(bstrToQString(value.bstrVal));
+            const bool leadingSpace = !rawText.isEmpty() && rawText.front().isSpace();
+            const bool trailingSpace = !rawText.isEmpty() && rawText.back().isSpace();
+            const QString collapsed = rawText.simplified();
+            VariantClear(&value);
 
-            QString trimmed = text.simplified();
-            if (trimmed.isEmpty())
+            if (collapsed.isEmpty()) {
+                state.pendingSpace = state.pendingSpace || leadingSpace || trailingSpace;
                 return;
-
-            switch (highlightMode) {
-            case HighlightMode::Extract:
-                result += QString{" \\hl{%1} "}.arg(trimmed);
-                break;
-            case HighlightMode::Cloze:
-                result += QString{" \\hc{%1} "}.arg(trimmed);
-                break;
-            default:
-                result += trimmed;
-                break;
             }
 
+            appendRenderedToken(result, collapsed, state, highlightMode, leadingSpace, trailingSpace);
         } else {
-            VariantClear(&v);
+            VariantClear(&value);
         }
         return;
     }
 
-    // --- 元素节点 ---
-    if (nodeType == 1) { // NODE_ELEMENT
-        IHTMLElement *pElem = nullptr;
+    if (nodeType == 1) {
+        IHTMLElement* element = nullptr;
         QString tag;
         QString className;
+        if (SUCCEEDED(node->QueryInterface(IID_IHTMLElement, reinterpret_cast<void**>(&element))) && element) {
+            BSTR tagBstr = nullptr;
+            if (SUCCEEDED(element->get_tagName(&tagBstr)) && tagBstr) {
+                tag = bstrToQString(tagBstr).toLower();
+                SysFreeString(tagBstr);
+            }
 
-        if (SUCCEEDED(pNode->QueryInterface(IID_IHTMLElement, (void**)&pElem)) && pElem) {
-            BSTR bTag = nullptr;
-            if (SUCCEEDED(pElem->get_tagName(&bTag)) && bTag) {
-                tag = bstrToQString(bTag).toLower();
-                SysFreeString(bTag);
+            BSTR classBstr = nullptr;
+            if (SUCCEEDED(element->get_className(&classBstr)) && classBstr) {
+                className = bstrToQString(classBstr).toLower();
+                SysFreeString(classBstr);
             }
-            BSTR bClass = nullptr;
-            if (SUCCEEDED(pElem->get_className(&bClass))&& bClass) {
-                className = bstrToQString(bClass).toLower();
-                SysFreeString(bClass);
-            }
-            pElem->Release();
+
+            element->Release();
         }
 
-        bool isExtractSpan = false;
-        bool isClozeSpan = false;
-        if (tag == "span" && !className.isEmpty()) {
-            isExtractSpan = className.contains("extract");
-            isClozeSpan = className.contains("clozed");
-        }
-
-        // <br>：行内换行
         if (tag == "br") {
+            state.pendingSpace = false;
             result += "\r\n";
             return;
         }
 
-        bool isParagraph = (tag == "p");
-
-        // 段落开始前，确保有一个空行
-        if (isParagraph) {
-            ensureEmptyLine(result);
+        if (isBlockElement(tag)) {
+            ensureEmptyLine(result, state);
         }
 
-        // 递归子节点
-        IHTMLDOMNode *pChild = nullptr;
-        if (SUCCEEDED(pNode->get_firstChild(&pChild)) && pChild) {
-            while (pChild) {
-                IHTMLDOMNode *pNext = nullptr;
-                pChild->get_nextSibling(&pNext);
-
-                // appendNodeText(pChild, result, inExtract || isExtractSpan);
-                auto childHighlight = highlightMode;
-                if (isClozeSpan) {
-                    childHighlight = HighlightMode::Cloze;
-                } else if (isExtractSpan) {
-                    childHighlight = HighlightMode::Extract;
-                }
-                appendNodeText(pChild, result, childHighlight);
-
-                pChild->Release();
-                pChild = pNext;
+        HighlightMode childHighlight = highlightMode;
+        if (tag == "span" && !className.isEmpty()) {
+            if (className.contains("clozed")) {
+                childHighlight = HighlightMode::Cloze;
+            } else if (className.contains("extract")) {
+                childHighlight = HighlightMode::Extract;
             }
         }
 
+        IHTMLDOMNode* child = nullptr;
+        if (SUCCEEDED(node->get_firstChild(&child)) && child) {
+            while (child) {
+                IHTMLDOMNode* next = nullptr;
+                child->get_nextSibling(&next);
+                appendNodeText(child, result, state, childHighlight);
+                child->Release();
+                child = next;
+            }
+        }
         return;
     }
 
-    // 其他节点类型：只递归子节点
-    IHTMLDOMNode *pChild = nullptr;
-    if (SUCCEEDED(pNode->get_firstChild(&pChild)) && pChild) {
-        while (pChild) {
-            IHTMLDOMNode *pNext = nullptr;
-            pChild->get_nextSibling(&pNext);
-
-            appendNodeText(pChild, result, highlightMode);
-
-            pChild->Release();
-            pChild = pNext;
+    IHTMLDOMNode* child = nullptr;
+    if (SUCCEEDED(node->get_firstChild(&child)) && child) {
+        while (child) {
+            IHTMLDOMNode* next = nullptr;
+            child->get_nextSibling(&next);
+            appendNodeText(child, result, state, highlightMode);
+            child->Release();
+            child = next;
         }
     }
 }
 
+QString trimTrailingLineBreaks(QString text)
+{
+    while (text.endsWith("\r\n")) {
+        text.chop(2);
+    }
+    return text;
+}
+
+QString fallbackInnerText(IHTMLElement* element)
+{
+    if (!element) {
+        return {};
+    }
+
+    BSTR textBstr = nullptr;
+    if (SUCCEEDED(element->get_innerText(&textBstr)) && textBstr) {
+        const QString text = bstrToQString(textBstr);
+        SysFreeString(textBstr);
+        return text;
+    }
+
+    BSTR htmlBstr = nullptr;
+    if (SUCCEEDED(element->get_innerHTML(&htmlBstr)) && htmlBstr) {
+        const QString text = bstrToQString(htmlBstr);
+        SysFreeString(htmlBstr);
+        return text;
+    }
+
+    return {};
+}
+
+QString renderBodyText(IHTMLElement* body)
+{
+    if (!body) {
+        return {};
+    }
+
+    QString result;
+    IHTMLDOMNode* bodyNode = nullptr;
+    if (SUCCEEDED(body->QueryInterface(IID_IHTMLDOMNode, reinterpret_cast<void**>(&bodyNode))) && bodyNode) {
+        TextAppendState state;
+        appendNodeText(bodyNode, result, state);
+        bodyNode->Release();
+    }
+
+    return trimTrailingLineBreaks(result);
+}
+}
 
 SuperMemoIeExtractor::SuperMemoIeExtractor(HWND superMemoHwnd)
-:m_superMemoHwnd(superMemoHwnd)
+    : m_superMemoHwnd(superMemoHwnd)
 {
-
 }
 
 SuperMemoIeExtractor::~SuperMemoIeExtractor()
 {
-
 }
 
 std::vector<IeControlContent> SuperMemoIeExtractor::extractAllIeControls()
 {
     std::vector<IeControlContent> ret;
     auto hIeCtrls = enumerateIeControls(m_superMemoHwnd);
-    if (hIeCtrls.empty()) return ret;
+    if (hIeCtrls.empty()) {
+        return ret;
+    }
 
-    // 保证COM初始化只在本线程一次
     HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     const bool comInit = SUCCEEDED(hr);
     if (hr == RPC_E_CHANGED_MODE) {
@@ -203,29 +272,35 @@ std::vector<IeControlContent> SuperMemoIeExtractor::extractAllIeControls()
 
     for (HWND hwnd : hIeCtrls) {
         IeControlContent info;
-        if (extractControlContent(hwnd, info))
+        if (extractControlContent(hwnd, info)) {
             ret.push_back(info);
+        }
     }
+
     if (comInit) {
         CoUninitialize();
     }
+
     return ret;
 }
 
 std::vector<HWND> SuperMemoIeExtractor::enumerateIeControls(HWND superMemoHwnd)
 {
     std::vector<HWND> result;
-    if (!superMemoHwnd) return result;
+    if (!superMemoHwnd) {
+        return result;
+    }
 
     EnumChildWindows(superMemoHwnd, [](HWND hwnd, LPARAM lParam) -> BOOL {
         char className[256] = {0};
         GetClassNameA(hwnd, className, sizeof(className) - 1);
         if (strcmp(className, "Internet Explorer_Server") == 0) {
-            auto vec = reinterpret_cast<std::vector<HWND>*>(lParam);
+            auto* vec = reinterpret_cast<std::vector<HWND>*>(lParam);
             vec->push_back(hwnd);
         }
         return TRUE;
     }, reinterpret_cast<LPARAM>(&result));
+
     return result;
 }
 
@@ -234,7 +309,64 @@ int SuperMemoIeExtractor::countIeControls(HWND superMemoHwnd)
     return enumerateIeControls(superMemoHwnd).size();
 }
 
-bool SuperMemoIeExtractor::extractControlContent(HWND hwnd, IeControlContent &info)
+QString SuperMemoIeExtractor::extractTextFromHtml(const QString& html)
+{
+    if (html.isEmpty()) {
+        return {};
+    }
+
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const bool comInit = SUCCEEDED(hr);
+    if (hr == RPC_E_CHANGED_MODE) {
+        qWarning() << "[SM_TEST_COM_APARTMENT_MISMATCH] Reusing existing COM apartment mode.";
+    } else if (FAILED(hr)) {
+        qWarning() << "[SM_TEST_COM_INIT_FAILED] hr=0x" << Qt::hex << static_cast<unsigned long>(hr) << Qt::dec;
+        return {};
+    }
+
+    QString result;
+    IHTMLDocument2* document = nullptr;
+    CLSID htmlDocumentClsid{};
+    hr = CLSIDFromProgID(L"htmlfile", &htmlDocumentClsid);
+    if (SUCCEEDED(hr)) {
+        hr = CoCreateInstance(htmlDocumentClsid, nullptr, CLSCTX_INPROC_SERVER, IID_IHTMLDocument2, reinterpret_cast<void**>(&document));
+    }
+
+    if (SUCCEEDED(hr) && document) {
+        IPersistStreamInit* persist = nullptr;
+        if (SUCCEEDED(document->QueryInterface(IID_IPersistStreamInit, reinterpret_cast<void**>(&persist))) && persist) {
+            persist->InitNew();
+            persist->Release();
+        }
+
+        SAFEARRAY* array = SafeArrayCreateVector(VT_VARIANT, 0, 1);
+        if (array) {
+            VARIANT* entry = nullptr;
+            if (SUCCEEDED(SafeArrayAccessData(array, reinterpret_cast<void**>(&entry))) && entry) {
+                VariantInit(entry);
+                entry->vt = VT_BSTR;
+                entry->bstrVal = SysAllocString(reinterpret_cast<const OLECHAR*>(html.utf16()));
+                SafeArrayUnaccessData(array);
+
+                if (SUCCEEDED(document->write(array))) {
+                    document->close();
+                    result = extractDocumentContent(document);
+                }
+            }
+            SafeArrayDestroy(array);
+        }
+
+        document->Release();
+    }
+
+    if (comInit) {
+        CoUninitialize();
+    }
+
+    return result;
+}
+
+bool SuperMemoIeExtractor::extractControlContent(HWND hwnd, IeControlContent& info)
 {
     char className[256] = {0};
     char winText[256] = {0};
@@ -247,11 +379,9 @@ bool SuperMemoIeExtractor::extractControlContent(HWND hwnd, IeControlContent &in
     info.isVisible = !!IsWindowVisible(hwnd);
     GetWindowRect(hwnd, &info.rect);
 
-    // 获取HTML文档内容
     info.content = getDocumentContent(hwnd, info.htmlTitle, info.url);
 
-    // 对于一个 SuperMemo Element，如果为其添加了 Reference，Element 末尾会有相关的字符串，需要在编译 PDF 文档时将其去除
-    int suRefPos = info.content.lastIndexOf("#SuperMemo Reference:");
+    const int suRefPos = info.content.lastIndexOf("#SuperMemo Reference:");
     if (suRefPos != -1) {
         info.content = info.content.left(suRefPos);
     }
@@ -259,102 +389,85 @@ bool SuperMemoIeExtractor::extractControlContent(HWND hwnd, IeControlContent &in
     return true;
 }
 
-QString SuperMemoIeExtractor::getDocumentContent(HWND hwnd, QString &title, QString &url)
+QString SuperMemoIeExtractor::getDocumentContent(HWND hwnd, QString& title, QString& url)
 {
-    QString result;
+    const UINT message = RegisterWindowMessageA("WM_HTML_GETOBJECT");
+    DWORD_PTR resultHandle = 0;
+    const LRESULT sendResult = SendMessageTimeout(
+        hwnd,
+        message,
+        0,
+        0,
+        SMTO_ABORTIFHUNG,
+        HTML_GETOBJECT_TIMEOUT_MS,
+        &resultHandle);
 
-    UINT nMsg = RegisterWindowMessageA("WM_HTML_GETOBJECT");
-    DWORD_PTR dwRes = 0;
-    LRESULT lRes = SendMessageTimeout(hwnd, nMsg, 0, 0, SMTO_ABORTIFHUNG, HTML_GETOBJECT_TIMEOUT_MS, &dwRes);
-
-    if (lRes == 0 || dwRes == 0) return {};
-
-    IHTMLDocument2 *pDoc = nullptr;
-    HRESULT hr = ObjectFromLresult(dwRes, IID_IHTMLDocument2, 0, (void **)&pDoc);
-    if (!SUCCEEDED(hr) || !pDoc) return {};
-
-    // title
-    BSTR bstrTitle = nullptr;
-    if (SUCCEEDED(pDoc->get_title(&bstrTitle)) && bstrTitle) {
-        title = bstrToQString(bstrTitle);
-        SysFreeString(bstrTitle);
+    if (sendResult == 0 || resultHandle == 0) {
+        return {};
     }
 
-    // url
-    BSTR bstrURL = nullptr;
-    if (SUCCEEDED(pDoc->get_URL(&bstrURL)) && bstrURL) {
-        url = bstrToQString(bstrURL);
-        SysFreeString(bstrURL);
+    IHTMLDocument2* document = nullptr;
+    const HRESULT hr = ObjectFromLresult(resultHandle, IID_IHTMLDocument2, 0, reinterpret_cast<void**>(&document));
+    if (FAILED(hr) || !document) {
+        return {};
     }
 
-    // 内容：DOM 遍历
-    IHTMLElement *pBody = nullptr;
-    if (SUCCEEDED(pDoc->get_body(&pBody)) && pBody) {
-        QString bodyHtml;
-        BSTR bstrHtml = nullptr;
-        if (SUCCEEDED(pBody->get_innerHTML(&bstrHtml)) && bstrHtml) {
-            bodyHtml = bstrToQString(bstrHtml);
-            SysFreeString(bstrHtml);
-        }
-
-        // 快路径：无 extract/clozed 标记时，直接 innerText，避免高成本 DOM 递归
-        const bool needsHighlightAwareExtraction =
-            bodyHtml.contains("extract", Qt::CaseInsensitive) ||
-            bodyHtml.contains("clozed", Qt::CaseInsensitive);
-        if (!needsHighlightAwareExtraction) {
-            BSTR bstrText = nullptr;
-            if (SUCCEEDED(pBody->get_innerText(&bstrText)) && bstrText) {
-                result = bstrToQString(bstrText);
-                SysFreeString(bstrText);
-                if (bodyHtml.contains("<p", Qt::CaseInsensitive)) {
-                    result = normalizeParagraphBreaks(result);
-                }
-            }
-        }
-
-        if (result.isEmpty() && needsHighlightAwareExtraction) {
-            IHTMLDOMNode *pBodyNode = nullptr;
-            if (SUCCEEDED(pBody->QueryInterface(IID_IHTMLDOMNode, (void**)&pBodyNode)) && pBodyNode) {
-                appendNodeText(pBodyNode, result);
-                pBodyNode->Release();
-            }
-        }
-
-        // 兜底逻辑：如果 result 还是空，就用 innerText
-        if (result.isEmpty()) {
-            BSTR bstrText = nullptr;
-            if (SUCCEEDED(pBody->get_innerText(&bstrText)) && bstrText) {
-                result = bstrToQString(bstrText);
-                SysFreeString(bstrText);
-            } else if (SUCCEEDED(pBody->get_innerHTML(&bstrText)) && bstrText) {
-                result = bstrToQString(bstrText);
-                SysFreeString(bstrText);
-            }
-        }
-
-        pBody->Release();
-    }
-
-    // 再尝试 documentElement（完全兜底）
-    if (result.isEmpty()) {
-        IHTMLDocument3 *pDoc3 = nullptr;
-        if (SUCCEEDED(pDoc->QueryInterface(IID_IHTMLDocument3, (void**)&pDoc3)) && pDoc3) {
-            IHTMLElement *pRoot = nullptr;
-            if (SUCCEEDED(pDoc3->get_documentElement(&pRoot)) && pRoot) {
-                BSTR bstrText = nullptr;
-                if (SUCCEEDED(pRoot->get_innerText(&bstrText)) && bstrText) {
-                    result = bstrToQString(bstrText);
-                    SysFreeString(bstrText);
-                }
-                pRoot->Release();
-            }
-            pDoc3->Release();
-        }
-    }
-
-    pDoc->Release();
-    return result;
+    const QString content = extractDocumentContent(document, &title, &url);
+    document->Release();
+    return content;
 }
 
+QString SuperMemoIeExtractor::extractDocumentContent(IHTMLDocument2* document, QString* title, QString* url)
+{
+    if (!document) {
+        return {};
+    }
 
+    if (title) {
+        BSTR titleBstr = nullptr;
+        if (SUCCEEDED(document->get_title(&titleBstr)) && titleBstr) {
+            *title = bstrToQString(titleBstr);
+            SysFreeString(titleBstr);
+        } else {
+            title->clear();
+        }
+    }
 
+    if (url) {
+        BSTR urlBstr = nullptr;
+        if (SUCCEEDED(document->get_URL(&urlBstr)) && urlBstr) {
+            *url = bstrToQString(urlBstr);
+            SysFreeString(urlBstr);
+        } else {
+            url->clear();
+        }
+    }
+
+    QString result;
+    IHTMLElement* body = nullptr;
+    if (SUCCEEDED(document->get_body(&body)) && body) {
+        // Avoid body.innerText here: once IE flattens <p> and <br> into the same newline stream,
+        // we can no longer tell paragraph boundaries from multi-line LaTeX inside one paragraph.
+        result = renderBodyText(body);
+        if (result.isEmpty()) {
+            result = fallbackInnerText(body);
+        }
+        body->Release();
+    }
+
+    if (!result.isEmpty()) {
+        return result;
+    }
+
+    IHTMLDocument3* document3 = nullptr;
+    if (SUCCEEDED(document->QueryInterface(IID_IHTMLDocument3, reinterpret_cast<void**>(&document3))) && document3) {
+        IHTMLElement* root = nullptr;
+        if (SUCCEEDED(document3->get_documentElement(&root)) && root) {
+            result = fallbackInnerText(root);
+            root->Release();
+        }
+        document3->Release();
+    }
+
+    return result;
+}

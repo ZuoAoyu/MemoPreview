@@ -7,6 +7,7 @@
 #include "PreviewSyncService.h"
 #include "WriteDebouncePolicy.h"
 #include "RetryBackoffPolicy.h"
+#include "SuperMemoIeExtractor.h"
 
 namespace {
 int g_failures = 0;
@@ -17,6 +18,13 @@ void expectTrue(bool condition, const QString& message)
         std::cerr << "[FAIL] " << message.toStdString() << std::endl;
         ++g_failures;
     }
+}
+
+QString normalizedForTest(QString text)
+{
+    text.replace("\r\n", "\n");
+    text.replace('\r', '\n');
+    return text;
 }
 
 void testPreviewSyncService()
@@ -56,6 +64,52 @@ void testPreviewSyncService()
     expectTrue(texFile.open(QIODevice::ReadOnly), "main.tex should be readable");
     const QString readBack = QString::fromUtf8(texFile.readAll());
     expectTrue(readBack == latex, "main.tex content should match generated latex");
+}
+
+void testSuperMemoIeExtractorPreservesLatexBlocks()
+{
+    const QString html = QString::fromUtf8(R"(
+<html>
+  <body>
+    <p>看涨期权给予其持有者以行权价格买入标的资产的权利。无论发生什么情况，期权的价格都不会超过标的资产价格，因此，标的资产价格是看涨期权价格的上限：</p>
+    <p>\begin{equation}<br>
+    c \leq S_0, \quad C \leq S_0<br>
+    \tag{2-12}<br>
+    \end{equation}</p>
+    <p>如果以上不等式不成立，那么套利者可以购买标的资产并同时卖出看涨期权来获取无风险盈利。</p>
+  </body>
+</html>
+)");
+
+    const QString extracted = normalizedForTest(SuperMemoIeExtractor::extractTextFromHtml(html));
+    expectTrue(
+        extracted.contains("\\begin{equation}\nc \\leq S_0, \\quad C \\leq S_0\n\\tag{2-12}\n\\end{equation}"),
+        "latex block should preserve single newlines inside the same paragraph");
+    expectTrue(
+        !extracted.contains("\\begin{equation}\n\nc \\leq S_0"),
+        "latex block should not be split into multiple paragraphs");
+    expectTrue(
+        extracted.contains("上限：\n\n\\begin{equation}"),
+        "paragraph break before latex block should be preserved");
+    expectTrue(
+        extracted.contains("\\end{equation}\n\n如果以上不等式不成立"),
+        "paragraph break after latex block should be preserved");
+}
+
+void testSuperMemoIeExtractorPreservesInlineSpaces()
+{
+    const QString html = QString::fromUtf8(R"(
+<html>
+  <body>
+    <p>Hello <b>world</b> from <span>MemoPreview</span>.</p>
+  </body>
+</html>
+)");
+
+    const QString extracted = normalizedForTest(SuperMemoIeExtractor::extractTextFromHtml(html));
+    expectTrue(
+        extracted.contains("Hello world from MemoPreview."),
+        "inline formatting should not collapse spaces between adjacent text nodes");
 }
 
 void testWriteDebouncePolicy()
@@ -98,6 +152,8 @@ int main(int argc, char* argv[])
     QCoreApplication app(argc, argv);
 
     testPreviewSyncService();
+    testSuperMemoIeExtractorPreservesLatexBlocks();
+    testSuperMemoIeExtractorPreservesInlineSpaces();
     testWriteDebouncePolicy();
     testRetryBackoffPolicy();
 

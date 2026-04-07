@@ -34,6 +34,9 @@ public:
     // 检测指定 SuperMemo 主窗口下 IE 控件数量
     static int countIeControls(HWND superMemoHwnd);
 
+    // 供测试/诊断使用：直接从 HTML 字符串按 DOM 结构提取正文文本
+    static QString extractTextFromHtml(const QString& html);
+
 private:
     HWND m_superMemoHwnd;
 
@@ -42,6 +45,7 @@ private:
 
     // 获取 IHTMLDocument2 内容相关
     static QString getDocumentContent(HWND hwnd, QString &title, QString &url);
+    static QString extractDocumentContent(IHTMLDocument2* document, QString* title = nullptr, QString* url = nullptr);
 };
 
 #endif // SUPERMEMOIEEXTRACTOR_H

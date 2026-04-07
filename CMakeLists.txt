@@ -104,10 +104,11 @@ if(MEMOPREVIEW_BUILD_TESTS)
     add_executable(MemoPreviewTests
         tests/MemoPreviewTests.cpp
         src/PreviewSyncService.cpp
+        src/SuperMemoIeExtractor.cpp
         src/WriteDebouncePolicy.cpp
         src/RetryBackoffPolicy.cpp
     )
-    target_link_libraries(MemoPreviewTests PRIVATE Qt${QT_VERSION_MAJOR}::Core)
+    target_link_libraries(MemoPreviewTests PRIVATE Qt${QT_VERSION_MAJOR}::Core WindowsOLE)
     target_include_directories(MemoPreviewTests PRIVATE
         "${CMAKE_SOURCE_DIR}/include"
     )
